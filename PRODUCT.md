@@ -24,16 +24,16 @@ Not a product for others — a personal reskin. The mechanism (calling the porta
 
 ## Operating Context
 
-Used daily, likely multiple times a day, in short sessions (checking today's classes, checking/making a facility booking). Runs inside the student's own logged-in browser session — inherits cookies, no separate auth. Data source is Salesforce Apex controllers called through Aura, exposed via `callAura()`:
+Used daily, likely multiple times a day, in short sessions (checking today's classes, checking/making a facility booking, asking Gyan something). Runs inside the student's own logged-in browser session — inherits cookies, no separate auth. Data source is Salesforce Apex controllers called through Aura, exposed via `callAura()`:
 - `StudentPortalCalendarCtrl.getAllScheduledEvents` — class schedule (course, faculty, room, time)
-- `CustomBookingController.getReservations` — user's own facility bookings
+- `CustomBookingController.getReservations` / `createReservation` / `cancelReservation` — user's own facility bookings, full read/write
 - `CustomBookingController.getResources` / `getResourceAvailability` — browsing facilities (gym, library rooms, classrooms, etc.) and their open slots by date
-- Booking *submission* (writing a new reservation) is not yet wired — read-only for now (see HANDOFF.md)
+- `AiAssistantWindowController.*` (namespace `"vnai"`) + `AiAssistantFlameCommunityWrapper.*` — Gyan, the portal's own AI assistant; a tool-calling relay loop, not a simple request/response (see HANDOFF.md)
 
 ## Capabilities and Constraints
 
-- Current tabs: Calendar, My Bookings, Book Slot (availability lookup only, no submit yet), Resources.
-- No native styling exists yet — current implementation is unstyled `<ul>`/`<li>`/`<button>` markup, zero CSS. This design pass is the first real visual layer.
+- Current tabs: Home, Calendar, My Bookings, Book Slot (full booking flow, submit + cancel wired up), Gyan (chat).
+- Styled throughout — dark theme, blue/indigo accent (`--accent: #5b8cff`), custom calendar grid, chat UI. No longer the unstyled first pass this doc originally described.
 - Must coexist with the host page's own scripts (Aura framework) without conflicting — script hides original DOM via CSS, doesn't remove it from the document.
 - Single file, `@grant none`, no external CDN/build tooling (Tampermonkey userscript constraints) — any generated CSS/JS ships inline in `portal-reskin.user.js`.
 - No accessibility requirement was specified by the user; standard reasonable a11y (contrast, focus states, keyboard nav) should still hold since it's a real daily-use tool for one person, not a throwaway script.

@@ -93,10 +93,20 @@
   // getCurrentUserContactId returns a Contact Id (003-prefix) — NOT usable
   // here, the Apex methods below want a User Id (005-prefix). The only
   // mapped no-arg call that surfaces the User Id is the AI assistant's
-  // thread context string, so scrape it out of there instead.
+  // thread context string, so scrape it out of there instead. Also carries
+  // additionalKnowledgeFileIds, which Gyan's own chat calls need — cache the
+  // raw response once and let both consumers share it.
+  let assistantContextCache = null;
+  async function getAssistantContext() {
+    if (!assistantContextCache) {
+      assistantContextCache = await callAura('AiAssistantFlameCommunityWrapper', 'getAssistantContext', null, true);
+    }
+    return assistantContextCache;
+  }
+
   async function resolveUserId() {
     if (auraState.userId) return auraState.userId;
-    const ctx = await callAura('AiAssistantFlameCommunityWrapper', 'getAssistantContext', null, true);
+    const ctx = await getAssistantContext();
     const match = /005[A-Za-z0-9]{12,15}/.exec(ctx.threadContext || '');
     if (!match) throw new Error('could not resolve Salesforce User Id from assistant context');
     auraState.userId = match[0];
@@ -109,7 +119,7 @@
 
   let actionCounter = 0;
 
-  async function callAura(classname, method, params = null, cacheable = false) {
+  async function callAura(classname, method, params = null, cacheable = false, namespace = '') {
     // Preview/dev hook: when a static preview page defines this global,
     // short-circuit the network entirely and resolve canned data. Never
     // set on the real portal, so this is inert in production.
@@ -125,7 +135,7 @@
 
     const id = String(actionCounter++);
     const innerParams = {
-      namespace: '',
+      namespace,
       classname,
       method,
       cacheable,
@@ -522,6 +532,23 @@
 .fr-error-panel { background: var(--danger-bg); color: var(--danger); border-radius: 10px; padding: 14px 16px; font-weight: 500; margin-top: 24px; }
 .fr-error-text { color: var(--danger); }
 
+/* Gyan chat tab */
+.fr-gyan-page { display: flex; flex-direction: column; height: 100%; min-height: 0; max-width: 720px; }
+.fr-gyan-messages { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.fr-gyan-list { display: flex; flex-direction: column; gap: 12px; }
+.fr-gyan-msg { display: flex; }
+.fr-gyan-msg--user { justify-content: flex-end; }
+.fr-gyan-msg--assistant { justify-content: flex-start; }
+.fr-gyan-bubble {
+  max-width: 75%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap;
+  word-break: break-word; line-height: 1.45;
+}
+.fr-gyan-msg--user .fr-gyan-bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
+.fr-gyan-msg--assistant .fr-gyan-bubble { background: var(--bg-elevated); color: var(--text); border-bottom-left-radius: 4px; }
+.fr-gyan-typing { color: var(--text-secondary); font-style: italic; }
+.fr-gyan-composer { display: flex; gap: 10px; margin-top: 16px; flex-shrink: 0; }
+.fr-gyan-composer .fr-input { flex: 1; }
+
 /* Stock-UI toggle — lives outside #flame-reskin-root so it survives the off-state */
 #flame-reskin-toggle {
   position: fixed; left: 16px; bottom: 16px; z-index: 2147483647;
@@ -562,6 +589,12 @@
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
   body:not(.flame-reskin-off) #flame-reskin-toggle { bottom: 80px; }
+  /* Unlike other tabs, Gyan's chat always fills all the way to the bottom
+     of .fr-content's padded box by design (height:100% flex column) — so
+     unlike them, it actually reaches down into the Stock UI pill's mobile
+     position (bottom:80px + its own height) and the composer visibly
+     overlapped it. Give the composer enough clearance instead. */
+  .fr-gyan-composer { margin-bottom: 44px; }
 }
 `;
 
@@ -611,6 +644,7 @@
     book: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 3h6"/></svg>',
     chevronLeft: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
     chevronRight: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+    sparkle: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8L19 17z"/></svg>',
   };
 
   function icon(name, extraClass) {
@@ -716,6 +750,7 @@
     { id: 'calendar', label: 'Calendar', icon: 'calendar' },
     { id: 'bookings', label: 'My Bookings', icon: 'bookings' },
     { id: 'book-slot', label: 'Book Slot', icon: 'book' },
+    { id: 'gyan', label: 'Gyan', icon: 'sparkle' },
   ];
 
   let root, contentEl;
@@ -752,6 +787,7 @@
     calendar: renderCalendar,
     bookings: renderMyBookings,
     'book-slot': renderBookSlot,
+    gyan: renderGyan,
   };
 
   // Guards against a slower response landing after a faster one: if the
@@ -1495,6 +1531,190 @@
     contentEl.replaceChildren(page);
 
     refreshAvailability();
+  }
+
+  // ---------------------------------------------------------------------
+  // 13. Gyan — the portal's own AI assistant, talked to via the same Aura
+  //     RPC endpoint (namespace "vnai" instead of the usual ""). Real
+  //     backend actions (menu/faculty lookups, bookings) run server-side —
+  //     confirmed against a captured "book a gym slot via chat" session
+  //     where the chat's own booking call hit the identical refusal path
+  //     CustomBookingController.createReservation does. The client's job is
+  //     only to relay each requiredAction's already-computed functionResponse
+  //     back as a toolResponse until a real text reply comes back.
+  // ---------------------------------------------------------------------
+
+  const gyanState = {
+    ready: false,
+    assistantId: null,
+    userId: null,
+    threadId: null,
+    threadContext: null,
+    additionalKnowledgeFileIds: null,
+    displayName: 'Gyan',
+    welcomeMessage: '',
+    introductionText: '',
+    messages: [], // { role: 'user' | 'assistant', text }
+    sending: false,
+  };
+
+  async function ensureGyanReady() {
+    if (gyanState.ready) return;
+    const userId = await resolveUserId();
+    const ctx = await getAssistantContext();
+    gyanState.userId = userId;
+    gyanState.threadContext = ctx.threadContext;
+    gyanState.additionalKnowledgeFileIds = ctx.additionalKnowledgeFileIds || [];
+
+    const assistant = await callAura(
+      'AiAssistantWindowController', 'getAssistant',
+      { assistantName: 'Gyan', recordId: '' }, true, 'vnai'
+    );
+    gyanState.assistantId = assistant.assistantId;
+    gyanState.displayName = assistant.displayName || assistant.name || 'Gyan';
+    gyanState.welcomeMessage = assistant.welcomeMessage || '';
+    gyanState.introductionText = assistant.introductionText || '';
+
+    const thread = await callAura(
+      'AiAssistantWindowController', 'getUserThread',
+      { assistantId: gyanState.assistantId, actorId: userId, createIfNotExists: true, refreshToken: 0 },
+      true, 'vnai'
+    );
+    gyanState.threadId = thread.threadId;
+    gyanState.ready = true;
+  }
+
+  // A transfer_to_* requiredAction's functionArgs carries a userQuery —
+  // that becomes the *next* call's top-level message (confirmed against a
+  // real capture: "book me a gym slot..." transferred through two
+  // sub-assistants this way before any tool actually ran). Plain tool
+  // calls (getCurrentDateTime, getResourceAvailability, ...) have no
+  // userQuery, so the relay just sends an empty message for those.
+  function extractUserQuery(functionArgsJson) {
+    try {
+      const parsed = JSON.parse(functionArgsJson);
+      return typeof parsed.userQuery === 'string' ? parsed.userQuery : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function runGyanTurn(message) {
+    // runModeration's rejection shape was never observed live (nothing got
+    // flagged in the captured session) — fail open rather than block the
+    // user's message on an unknown error shape.
+    try {
+      await callAura('AiAssistantWindowController', 'runModeration', { message }, false, 'vnai');
+    } catch (e) {
+      console.warn('[flame-reskin] gyan moderation check failed, sending anyway', e);
+    }
+
+    let runRequest = {
+      assistantId: gyanState.assistantId,
+      actorId: gyanState.userId,
+      threadId: gyanState.threadId,
+      message,
+      threadContext: gyanState.threadContext,
+      additionalKnowledgeFileIds: gyanState.additionalKnowledgeFileIds,
+    };
+
+    // Capped so a malformed/looping response can't hang the chat forever.
+    for (let step = 0; step < 8; step++) {
+      const res = await callAura('AiAssistantWindowController', 'runAssistant', { runRequest }, false, 'vnai');
+      if (!res.requiredActions || !res.requiredActions.length) {
+        return res.text || "Sorry, I didn't get a response for that.";
+      }
+      const toolResponses = res.requiredActions.map((a) => ({
+        name: a.functionName,
+        arguments: a.functionArgs,
+        callId: a.toolCallId,
+        response: a.functionResponse,
+      }));
+      const transferQuery = res.requiredActions.map((a) => extractUserQuery(a.functionArgs)).find(Boolean);
+      const excludeFunctions = res.requiredActions.map((a) => a.excludeTransferFunction).filter(Boolean);
+      const transferredFrom = res.requiredActions.map((a) => a.transferredFromAssistantId).find(Boolean);
+      runRequest = {
+        assistantId: gyanState.assistantId,
+        actorId: gyanState.userId,
+        threadId: gyanState.threadId,
+        message: transferQuery || '',
+        toolResponses,
+        threadContext: gyanState.threadContext,
+        additionalKnowledgeFileIds: gyanState.additionalKnowledgeFileIds,
+        excludeFunctions,
+        ...(transferredFrom ? { transferredFromAssistantId: transferredFrom } : {}),
+      };
+    }
+    throw new Error('Gyan did not finish responding (too many tool steps)');
+  }
+
+  async function renderGyan(token) {
+    await ensureGyanReady();
+    if (token !== activeToken) return;
+
+    const page = el('div', { class: 'fr-page fr-gyan-page' });
+    page.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName }));
+
+    const messagesEl = el('div', { class: 'fr-gyan-messages' });
+    const composerForm = el('form', { class: 'fr-gyan-composer' });
+    const inputEl = el('input', {
+      class: 'fr-input', type: 'text', placeholder: `Ask ${gyanState.displayName}…`, autocomplete: 'off',
+    });
+    const sendBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'submit', text: 'Send' });
+    composerForm.append(inputEl, sendBtn);
+
+    function paintMessages() {
+      inputEl.disabled = gyanState.sending;
+      sendBtn.disabled = gyanState.sending;
+      if (!gyanState.messages.length && !gyanState.sending) {
+        messagesEl.replaceChildren(
+          renderEmpty('sparkle', gyanState.welcomeMessage || 'Ask Gyan',
+            gyanState.introductionText || 'Ask about classes, bookings, campus info, or anything else Gyan can help with.')
+        );
+        return;
+      }
+      const list = el('div', { class: 'fr-gyan-list' });
+      for (const m of gyanState.messages) {
+        const row = el('div', { class: `fr-gyan-msg fr-gyan-msg--${m.role}` });
+        row.appendChild(el('div', { class: 'fr-gyan-bubble', text: m.text }));
+        list.appendChild(row);
+      }
+      if (gyanState.sending) {
+        const row = el('div', { class: 'fr-gyan-msg fr-gyan-msg--assistant' });
+        row.appendChild(el('div', { class: 'fr-gyan-bubble fr-gyan-typing', text: `${gyanState.displayName} is thinking…` }));
+        list.appendChild(row);
+      }
+      messagesEl.replaceChildren(list);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    composerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = inputEl.value.trim();
+      if (!text || gyanState.sending) return;
+      inputEl.value = '';
+      gyanState.messages.push({ role: 'user', text });
+      gyanState.sending = true;
+      // State updates always happen regardless of which tab is showing —
+      // only the DOM paint is gated on still being the active view, so
+      // switching away mid-reply and back later shows the finished chat
+      // instead of getting stuck on "thinking" forever.
+      if (token === activeToken) paintMessages();
+      try {
+        const reply = await runGyanTurn(text);
+        gyanState.messages.push({ role: 'assistant', text: reply });
+      } catch (err) {
+        gyanState.messages.push({ role: 'assistant', text: `Sorry, something went wrong: ${err.message}` });
+      } finally {
+        gyanState.sending = false;
+        if (token === activeToken) paintMessages();
+      }
+    });
+
+    paintMessages();
+    page.append(messagesEl, composerForm);
+    contentEl.replaceChildren(page);
+    inputEl.focus();
   }
 
   // ---------------------------------------------------------------------
