@@ -41,17 +41,26 @@
       welcomeMessage: 'Welcome to Gyan',
       introductionText: 'Ask about classes, bookings, campus info, or anything else Gyan can help with.',
     },
-    // Real backend behavior (confirmed via a live HAR): calling this with
-    // an empty assistantId returns {} (no threadId) — only a call with the
-    // real assistantId returns one. Model that distinction here so the
-    // preview actually exercises ensureGyanReady()'s two-call sequence
-    // instead of masking a regression by always returning a threadId.
-    'AiAssistantWindowController.getUserThread': function (params) {
-      if (!params.assistantId) return {};
-      return { threadId: 'thread_preview1788263209083', fileUploadEnabled: false };
+    // Real backend behavior (confirmed via a live HAR of the actual "Start
+    // chat" click): getUserThread's createIfNotExists never actually
+    // creates anything — it comes back {} whenever no thread exists yet,
+    // real or not. A separate createNewThread call is the only thing that
+    // actually creates one, returning the new id as a bare string. Tracked
+    // as real preview-session state (not just keyed on assistantId) so the
+    // harness exercises the true lookup-miss -> create -> use path, and
+    // deleteThread ("New chat") genuinely clears it back to nothing again.
+    'AiAssistantWindowController.getUserThread': function () {
+      return window.__gyanPreviewThreadId ? { threadId: window.__gyanPreviewThreadId, fileUploadEnabled: false } : {};
+    },
+    'AiAssistantWindowController.createNewThread': function () {
+      window.__gyanPreviewThreadId = 'thread_preview' + Date.now();
+      return window.__gyanPreviewThreadId;
     },
     'AiAssistantWindowController.runModeration': {},
-    'AiAssistantWindowController.deleteThread': {},
+    'AiAssistantWindowController.deleteThread': function () {
+      window.__gyanPreviewThreadId = null;
+      return {};
+    },
     'AiAssistantWindowController.runAssistant': function (params) {
       const req = params.runRequest;
       // Second relay hop (client echoed a requiredAction's functionResponse

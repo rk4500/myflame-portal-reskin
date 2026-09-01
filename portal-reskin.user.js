@@ -1803,44 +1803,36 @@ body.flame-reskin-off #flame-reskin-toggle {
     gyanState.welcomeMessage = assistant.welcomeMessage || '';
     gyanState.introductionText = assistant.introductionText || '';
 
-    // Confirmed from a live HAR: calling getUserThread once, directly with
-    // the real assistantId, comes back `{}` — no threadId — even with
-    // createIfNotExists:true, and runAssistant then fails server-side with
-    // "List index out of bounds: 0" because it gets no threadId at all
-    // (JSON.stringify drops the undefined key entirely).
-    //
-    // Tried replicating the reference capture's two-call getUserThread
-    // sequence (assistantId:"" first, then the real one) on the theory
-    // that the first call primes something server-side — confirmed via a
-    // second live HAR that this alone is NOT sufficient; it still comes
-    // back threadId-less. Current best guess, unconfirmed: createIfNotExists
-    // may only ever *find* an existing thread, never actually *create* one
-    // — the reference capture's "success" was likely just a lookup of a
-    // thread that already existed from an earlier real "Start chat" click
-    // in the stock UI, not evidence the create path itself works. Kept the
-    // two-call sequence anyway since it's cheap and matches the one known
-    // working capture, but the guard below is what actually matters now:
-    // fail loudly and immediately here rather than let a threadId-less
-    // request reach runAssistant and hit the cryptic backend crash.
-    await callAura(
-      'AiAssistantWindowController', 'getUserThread',
-      { assistantId: '', actorId: userId, createIfNotExists: true, refreshToken: 0 },
-      true, 'vnai'
-    ).catch(() => {}); // best-effort — only its (still-unconfirmed) side effect matters, not its result
+    gyanState.threadId = await acquireGyanThread(userId);
+    gyanState.ready = true;
+  }
 
-    const thread = await callAura(
+  // Root cause, finally confirmed via a HAR of the real "Start chat" click:
+  // getUserThread's createIfNotExists flag is misleading — it never
+  // actually creates anything, only looks up a thread that already
+  // exists (comes back `{}` otherwise, regardless of the flag). Real
+  // creation is a wholly separate method, createNewThread, which the
+  // stock UI calls only when the lookup comes back empty. Its response is
+  // the threadId *string itself*, not an object with a .threadId field
+  // (confirmed from the capture: returnValue is literally
+  // "thread_0055i00000CwfKqAAJ...", no wrapper). Safe to call whenever a
+  // thread is missing — deleteThread (fired for real by "New chat" below)
+  // is a real, working delete, and this is the real, working recreate.
+  async function acquireGyanThread(userId) {
+    const existing = await callAura(
       'AiAssistantWindowController', 'getUserThread',
       { assistantId: gyanState.assistantId, actorId: userId, createIfNotExists: true, refreshToken: 0 },
       true, 'vnai'
     );
-    if (!thread.threadId) {
-      throw new Error(
-        "Gyan couldn't start a conversation. Try switching to the Stock UI, opening Gyan there and tapping " +
-        '"Start chat" once, then switch back — that flow is confirmed to work.'
-      );
-    }
-    gyanState.threadId = thread.threadId;
-    gyanState.ready = true;
+    if (existing.threadId) return existing.threadId;
+
+    const newThreadId = await callAura(
+      'AiAssistantWindowController', 'createNewThread',
+      { assistantId: gyanState.assistantId, assistantName: gyanState.displayName, actorId: userId },
+      false, 'vnai'
+    );
+    if (!newThreadId) throw new Error('Gyan could not create a conversation thread');
+    return newThreadId;
   }
 
   // A transfer_to_* requiredAction's functionArgs carries a userQuery —
@@ -1924,15 +1916,26 @@ body.flame-reskin-off #flame-reskin-toggle {
     const headerRow = el('div', { class: 'fr-group-heading-row' });
     headerRow.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName, style: 'margin: 0;' }));
     const newChatBtn = el('button', { class: 'fr-link-btn', type: 'button', text: 'New chat' });
-    newChatBtn.addEventListener('click', () => {
-      // Deliberately local-only: clears the visible transcript but does
-      // NOT call deleteThread/resetGyanThread. getUserThread(createIfNotExists:true)
-      // looks like it can only ever find an existing thread, not actually
-      // create one — deleting the real thread here risks the same
-      // permanent "Gyan did not return a conversation thread" failure this
-      // button is meant to recover from. The real thread just keeps
-      // going server-side under the blank-looking view; harmless.
+    newChatBtn.addEventListener('click', async () => {
+      // deleteThread + acquireGyanThread's createNewThread fallback is now
+      // a confirmed-real delete-and-recreate (see acquireGyanThread) — a
+      // HAR of the stock UI's "End chat" button showed deleteThread really
+      // deletes, and a HAR of "Start chat" showed createNewThread is the
+      // real (and only) way to get a new one back afterward. Earlier this
+      // called deleteThread with no working recreate path at all, which
+      // was genuinely dangerous; that's fixed now.
+      newChatBtn.disabled = true;
+      const oldThreadId = gyanState.threadId;
       gyanState.messages = [];
+      gyanState.threadId = null;
+      gyanState.ready = false;
+      if (oldThreadId) {
+        try {
+          await callAura('AiAssistantWindowController', 'deleteThread', { threadId: oldThreadId }, false, 'vnai');
+        } catch (e) {
+          console.warn('[flame-reskin] failed to delete old gyan thread, continuing anyway', e);
+        }
+      }
       if (token === activeToken) switchTab('gyan');
     });
     headerRow.appendChild(newChatBtn);
@@ -1988,17 +1991,15 @@ body.flame-reskin-off #flame-reskin-toggle {
         gyanState.messages.push({ role: 'assistant', text: reply });
       } catch (err) {
         gyanState.messages.push({ role: 'assistant', text: `Sorry, something went wrong: ${err.message}` });
-        // Deliberately NOT auto-calling resetGyanThread() here anymore.
-        // It used to run on every error, and very likely deleted the
-        // user's one real working thread for good in the process:
-        // getUserThread(createIfNotExists:true) looks like it only ever
-        // *finds* an existing thread, never actually *creates* one — the
-        // reference capture's "successful creation" was almost certainly
-        // just a lookup of a thread that already existed from an earlier
-        // real "Start chat" click in the stock UI, not evidence the create
-        // path itself works. Auto-deleting on every error, unconditionally,
-        // repeatedly, was an irreversible action taken without asking —
-        // exactly the kind of thing that shouldn't happen automatically.
+        // Soft reset only: re-validate on the next attempt (acquireGyanThread
+        // looks up the existing thread first and only creates a new one if
+        // that lookup genuinely comes back empty — so this never deletes
+        // anything, just stops trusting possibly-stale local state). No
+        // automatic deleteThread here — that's real and destructive now
+        // that createNewThread's recreate path is confirmed working, so it
+        // stays an explicit action (the "New chat" button) the user chooses,
+        // not something that fires silently on every transient error.
+        gyanState.ready = false;
       } finally {
         gyanState.sending = false;
         if (token === activeToken) paintMessages();
