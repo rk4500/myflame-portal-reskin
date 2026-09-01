@@ -1,12 +1,12 @@
 # Aura descriptor map
 
-Parsed 8 HAR entries, 1 unique descriptors, 1 skipped (no message), merged with 29 sample(s) from prior aura_map.json.
+Parsed 109 HAR entries, 1 unique descriptors, 1 skipped (no message), merged with 32 sample(s) from prior aura_map.json.
 
 ## `aura://ApexActionController/ACTION$execute`
 
-seen 32 distinct call(s)
+seen 53 distinct call(s)
 
-**call 1** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 1** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -27,7 +27,7 @@ returnValue:
 }
 ```
 
-**call 2** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 2** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -47,13 +47,13 @@ returnValue:
     "additionalKnowledgeFileIds": [
       "file-XqT2vLZpHfPJFbCsErDtcE"
     ],
-    "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 00:00:39. The Salesforce user record Id is 0055i00000CwfKqAAJ."
+    "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ."
   },
   "cacheable": true
 }
 ```
 
-**call 3** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 3** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -74,7 +74,7 @@ returnValue:
 }
 ```
 
-**call 4** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 4** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -99,7 +99,7 @@ returnValue:
 ... (truncated, see .json for full)
 ```
 
-**call 5** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 5** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -120,7 +120,7 @@ returnValue:
 }
 ```
 
-**call 6** — page: `https://my.flame.edu.in/s/calendar`, state: `ERROR`
+**call 6** — page: `https://my.flame.edu.in/s/my-booking`, state: `ERROR`
 
 params:
 ```json
@@ -148,7 +148,7 @@ returnValue:
 
 error: `[{'exceptionType': 'ConnectApi.ConnectApiException', 'isUserDefinedException': True, 'message': 'Specify a valid "navigationLinkSetDeveloperName".', 'stackTrace': '(System Code)\nClass.NavigationMenuItemsController.getNavigationMenuItems: line 92, column 1'}]`
 
-**call 7** — page: `https://my.flame.edu.in/s/`, state: `ERROR`
+**call 7** — page: `https://my.flame.edu.in/s/my-booking`, state: `ERROR`
 
 params:
 ```json
@@ -170,7 +170,7 @@ returnValue:
 
 error: `[{'message': "You do not have access to the Apex class named 'EntryExitHeaderController'."}]`
 
-**call 8** — page: `https://my.flame.edu.in/s/calendar`, state: `ERROR`
+**call 8** — page: `https://my.flame.edu.in/s/my-booking`, state: `ERROR`
 
 params:
 ```json
@@ -198,7 +198,7 @@ returnValue:
 
 error: `[{'exceptionType': 'ConnectApi.ConnectApiException', 'isUserDefinedException': True, 'message': 'Specify a valid "navigationLinkSetDeveloperName".', 'stackTrace': '(System Code)\nClass.NavigationMenuItemsController.getNavigationMenuItems: line 92, column 1'}]`
 
-**call 9** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 9** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -335,7 +335,7 @@ returnValue:
 ... (truncated, see .json for full)
 ```
 
-**call 10** — page: `https://my.flame.edu.in/s/calendar`, state: `SUCCESS`
+**call 10** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -472,7 +472,7 @@ returnValue:
 ... (truncated, see .json for full)
 ```
 
-**call 11** — page: `https://my.flame.edu.in/s/`, state: `SUCCESS`
+**call 11** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -990,7 +990,7 @@ returnValue:
 }
 ```
 
-**call 23** — page: `https://my.flame.edu.in/s/book-slot`, state: `SUCCESS`
+**call 23** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1015,7 +1015,7 @@ returnValue:
 }
 ```
 
-**call 24** — page: `https://my.flame.edu.in/s/`, state: `SUCCESS`
+**call 24** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1035,6 +1035,24 @@ returnValue:
 ```json
 {
   "returnValue": [
+    {
+      "bookingId": "R-714864",
+      "endDate": "2026-09-02",
+      "endDateTime": "02/09/2026, 8:00 AM",
+      "resourceName": "Gym ( 6:00 am to 2:00 pm slot )",
+      "startDate": "2026-09-02",
+      "startDateTime": "02/09/2026, 7:00 AM",
+      "status": "Booked"
+    },
+    {
+      "bookingId": "R-714806",
+      "endDate": "2026-09-01",
+      "endDateTime": "01/09/2026, 9:00 AM",
+      "resourceName": "Gym ( 6:00 am to 2:00 pm slot )",
+      "startDate": "2026-09-01",
+      "startDateTime": "01/09/2026, 8:00 AM",
+      "status": "Booked"
+    },
     {
       "bookingId": "R-714794",
       "endDate": "2026-09-01",
@@ -1112,29 +1130,11 @@ returnValue:
       "endDate": "2026-08-16",
       "endDateTime": "16/08/2026, 9:00 PM",
       "resourceName": "Gym ( 3:00 pm to 11:00 pm slot )",
-      "startDate": "2026-08-16",
-      "startDateTime": "16/08/2026, 8:00 PM",
-      "status": "Booked"
-    },
-    {
-      "bookingId": "R-700638",
-      "endDate": "2026-08-14",
-      "endDateTime": "14/08/2026, 9:00 PM",
-      "resourceName": "Gym ( 3:00 pm to 11:00 pm slot )",
-      "startDate": "2026-08-14",
-      "startDateTime": "14/08/2026, 8:00 PM",
-      "status": "Booked"
-    },
-    {
-      "bookingId": "R-692310",
-      "endDate": "2026-04-24",
-      "endDateTime": "24/04/2026, 9:00 AM",
-      "resourceName": "Gym ( 6:00 am to 2:00 pm slot )",
-      
+      "
 ... (truncated, see .json for full)
 ```
 
-**call 25** — page: `https://my.flame.edu.in/s/`, state: `SUCCESS`
+**call 25** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1169,7 +1169,7 @@ returnValue:
 }
 ```
 
-**call 26** — page: `https://my.flame.edu.in/s/`, state: `SUCCESS`
+**call 26** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1196,7 +1196,7 @@ returnValue:
 }
 ```
 
-**call 27** — page: `https://my.flame.edu.in/s/`, state: `SUCCESS`
+**call 27** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1218,7 +1218,10 @@ params:
 returnValue:
 ```json
 {
-  "returnValue": {},
+  "returnValue": {
+    "fileUploadEnabled": false,
+    "threadId": "thread_0055i00000CwfKqAAJ1788263209083"
+  },
   "cacheable": true
 }
 ```
@@ -1278,7 +1281,7 @@ returnValue:
 }
 ```
 
-**call 30** — page: `https://my.flame.edu.in/s/book-slot`, state: `SUCCESS`
+**call 30** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1303,7 +1306,7 @@ returnValue:
 }
 ```
 
-**call 31** — page: `https://my.flame.edu.in/s/book-slot`, state: `SUCCESS`
+**call 31** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1328,7 +1331,7 @@ returnValue:
 }
 ```
 
-**call 32** — page: `https://my.flame.edu.in/s/book-slot`, state: `SUCCESS`
+**call 32** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
 
 params:
 ```json
@@ -1354,6 +1357,890 @@ returnValue:
 ```json
 {
   "returnValue": "More than 1 bookings are not allowed for selected resource.",
+  "cacheable": false
+}
+```
+
+**call 33** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runModeration",
+  "params": {
+    "message": "hi"
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "cacheable": false
+}
+```
+
+**call 34** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "message": "hi",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ]
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 29104,
+    "outputToken": 14,
+    "requiredActions": [
+      {
+        "excludeTransferFunction": "transfer_to_Gyan_Student_Files_Assistant",
+        "functionArgs": "{}",
+        "functionName": "transfer_to_gyan",
+        "functionResponse": "Query is not in scope of Gyan Student Files Assistant",
+        "toolCallId": "call_UzgAx7F1Ti2ydOodbgofaVOP",
+        "transferredFromAssistantId": "asst_n0RrjrSM1748680137430"
+      }
+    ],
+    "responseId": "resp_0dad50338ddb1892016a96d49e5f1087d09b5742246e9a6360",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 35** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "",
+      "toolResponses": [
+        {
+          "name": "transfer_to_gyan",
+          "arguments": "{}",
+          "callId": "call_UzgAx7F1Ti2ydOodbgofaVOP",
+          "response": "Query is not in scope of Gyan Student Files Assistant"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": [
+        "transfer_to_Gyan_Student_Files_Assistant"
+      ],
+      "transferredFromAssistantId": "asst_n0RrjrSM1748680137430"
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 1612,
+    "outputToken": 80,
+    "requiredActions": [],
+    "responseId": "resp_01f488f83c89dfb4016a96d4a18bcc87d08e855e98ff55e42e",
+    "status": "completed",
+    "text": "Hi Rudra, I\u2019m Gyan \u2014 your smart assistant at FLAME University. I can help with the following:\n- Academics\n- Facility reservations\n- Support cases\n- University info (e.g., handbook, dining menu, directory, knowledge articles)\nPlease tell me what you need help with.",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 36** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "getUserThread",
+  "params": {
+    "assistantId": "asst_bt45bMuv1750873146378",
+    "actorId": "0055i00000CwfKqAAJ",
+    "createIfNotExists": false,
+    "refreshToken": 1788269731416
+  },
+  "cacheable": true,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "fileUploadEnabled": false,
+    "threadId": "thread_0055i00000CwfKqAAJ1788263209083"
+  },
+  "cacheable": true
+}
+```
+
+**call 37** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runModeration",
+  "params": {
+    "message": "can you tell me whats for dinner today"
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "cacheable": false
+}
+```
+
+**call 38** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "message": "can you tell me whats for dinner today",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ]
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 1759,
+    "outputToken": 51,
+    "requiredActions": [
+      {
+        "functionArgs": "{\"userQuery\":\"Request for today's dinner menu at the mess/dining hall.\"}",
+        "functionName": "transfer_to_gyan_student_files_assistant",
+        "functionResponse": "Query transfered to the AI agent: gyan student files assistant",
+        "toolCallId": "call_EJWEMfjKfUUkdWTM0XGVtkDJ",
+        "transferredFromAssistantId": "asst_bt45bMuv1750873146378"
+      }
+    ],
+    "responseId": "resp_0cd4da73f4fe389c016a96d4aae69c87d0befc0d33901edb02",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 39** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "Request for today's dinner menu at the mess/dining hall.",
+      "toolResponses": [
+        {
+          "name": "transfer_to_gyan_student_files_assistant",
+          "arguments": "{\"userQuery\":\"Request for today's dinner menu at the mess/dining hall.\"}",
+          "callId": "call_EJWEMfjKfUUkdWTM0XGVtkDJ",
+          "response": "Query transfered to the AI agent: gyan student files assistant"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": [],
+      "transferredFromAssistantId": "asst_bt45bMuv1750873146378"
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 29153,
+    "outputToken": 13,
+    "requiredActions": [
+      {
+        "functionArgs": "{}",
+        "functionName": "getCurrentDateTime",
+        "functionResponse": "Current Date time in user locale is 2026-09-01 19:05:45",
+        "toolCallId": "call_Ul4K7ubngO35JjeViFgZHTgX"
+      }
+    ],
+    "responseId": "resp_09174579dad08104016a96d4b03fe887d084ec3a5429cd4e13",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 40** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "",
+      "toolResponses": [
+        {
+          "name": "getCurrentDateTime",
+          "arguments": "{}",
+          "callId": "call_Ul4K7ubngO35JjeViFgZHTgX",
+          "response": "Current Date time in user locale is 2026-09-01 19:05:45"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": []
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "fileSearchCall": {
+      "queries": [
+        "dinner menu for 2026-09-01"
+      ]
+    },
+    "inputToken": 45086,
+    "outputToken": 160,
+    "requiredActions": [],
+    "responseId": "resp_003363d8bddfcf37016a96d4b2ad8c87d087a48d572fbd8b89",
+    "status": "completed",
+    "text": "Today's (1st September 2026) dinner menu at FLAME University dining hall includes:\n\n- Soup: Veg Clear Soup\n- Salad: Laccha Salad\n- Side Dish: Masala Idli\n- Dry Veg: Soya Kheema Mutter\n- Gravy Veg: Boondi Raita\n- Dal: Cut Lemon\n- Rice: Veg Tehri\n- Roti: Pav\n- Drink: Lemon Mint Cooler\n- Pickle: Pickle\n- Papad: Roasted Papad\n- Dessert: Mohanthal\n\n",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 41** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "getUserThread",
+  "params": {
+    "assistantId": "asst_bt45bMuv1750873146378",
+    "actorId": "0055i00000CwfKqAAJ",
+    "createIfNotExists": false,
+    "refreshToken": 1788269752080
+  },
+  "cacheable": true,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "fileUploadEnabled": false,
+    "threadId": "thread_0055i00000CwfKqAAJ1788263209083"
+  },
+  "cacheable": true
+}
+```
+
+**call 42** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runModeration",
+  "params": {
+    "message": "book me a gym slot for 8am tommorow morning"
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "cacheable": false
+}
+```
+
+**call 43** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "message": "book me a gym slot for 8am tommorow morning",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ]
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 29357,
+    "outputToken": 14,
+    "requiredActions": [
+      {
+        "excludeTransferFunction": "transfer_to_Gyan_Student_Files_Assistant",
+        "functionArgs": "{}",
+        "functionName": "transfer_to_gyan",
+        "functionResponse": "Query is not in scope of Gyan Student Files Assistant",
+        "toolCallId": "call_dudPsycf70mXZL2DsfRQ6xnn",
+        "transferredFromAssistantId": "asst_n0RrjrSM1748680137430"
+      }
+    ],
+    "responseId": "resp_0101e75ac4311555016a96d4bcfbe887d0b90c7fc3c2f3738b",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 44** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "",
+      "toolResponses": [
+        {
+          "name": "transfer_to_gyan",
+          "arguments": "{}",
+          "callId": "call_dudPsycf70mXZL2DsfRQ6xnn",
+          "response": "Query is not in scope of Gyan Student Files Assistant"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": [
+        "transfer_to_Gyan_Student_Files_Assistant"
+      ],
+      "transferredFromAssistantId": "asst_n0RrjrSM1748680137430"
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 1877,
+    "outputToken": 53,
+    "requiredActions": [
+      {
+        "functionArgs": "{\"userQuery\":\"Please book a gym slot for 8:00 AM tomorrow morning.\"}",
+        "functionName": "transfer_to_gyan_student_booking_assistant",
+        "functionResponse": "Query transfered to the AI agent: gyan student booking assistant",
+        "toolCallId": "call_vq3EASuJOsY1qFxqspYFySwN",
+        "transferredFromAssistantId": "asst_bt45bMuv1750873146378"
+      }
+    ],
+    "responseId": "resp_0c0db24277ec1eb5016a96d4bf685087d0bbdc06f1e56cb5b0",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 45** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "Please book a gym slot for 8:00 AM tomorrow morning.",
+      "toolResponses": [
+        {
+          "name": "transfer_to_gyan_student_booking_assistant",
+          "arguments": "{\"userQuery\":\"Please book a gym slot for 8:00 AM tomorrow morning.\"}",
+          "callId": "call_vq3EASuJOsY1qFxqspYFySwN",
+          "response": "Query transfered to the AI agent: gyan student booking assistant"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": [
+        "transfer_to_Gyan_Student_Files_Assistant"
+      ],
+      "transferredFromAssistantId": "asst_bt45bMuv1750873146378"
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 1299,
+    "outputToken": 43,
+    "requiredActions": [
+      {
+        "functionArgs": "{}",
+        "functionName": "getAllResources",
+        "functionResponse": "[{\"resources\":[{\"resourceId\":\"a230K00000945JHQAY\",\"name\":\"Gym ( 6:00 am to 2:00 pm slot )\"},{\"resourceId\":\"a230K00000945K5QAI\",\"name\":\"Swimming Pool\"},{\"resourceId\":\"a235i000000nYV0AAM\",\"name\":\"Gym ( 3:00 pm to 11:00 pm slot )\"}],\"facility_Name\":\"Sports Facilities\"},{\"resources\":[{\"resourceId\":\"a230K00000945IiQAI\",\"name\":\"Library - Discussion Room A\"},{\"resourceId\":\"a230K00000945KFQAY\",\"name\":\"Library - Discussion Room C\"},{\"resourceId\":\"a230K00000945KKQAY\",\"name\":\"Library - Discussion Room B\"},{\"resourceId\":\"a230K00000945LrQAI\",\"name\":\"Chandragupta - Focus Room 201 W\"},{\"resourceId\":\"a230K00000945LwQAI\",\"name\":\"Chandragupta - Focus Room 301 W\"},{\"resourceId\":\"a235i000000tGUuAAM\",\"name\":\"Chandragupta - Amphitheatre\"}],\"facility_Name\":\"Conference Rooms\"},{\"resources\":[{\"resourceId\":\"a230K00000945MQQAY\",\"name\":\"Aryabhata - ARB001\"},{\"resourceId\":\"a230K00000945MVQAY\",\"name\":\"Aryabhata - ARB004\"},{\"resourceId\":\"a235i000000tG5kAAE\",\"name\":\"Aryabhata - ARB002\"},{\"resourceId\":\"a235i000000tG5pAAE\",\"name\":\"Aryabhata - ARB101\"},{\"resourceId\":\"a235i000000tG5uAAE\",\"name\":\"Aryabhata - ARB102\"},{\"resourceId\":\"a235i000000tG5zAAE\",\"name\":\"Aryabhata - ARB103\"},{\"resourceId\":\"a235i000000tG64AAE\",\"name\":\"Aryabhata - ARB104\"},{\"resourceId\":\"a235i000000tG69AAE\",\"name\":\"Aryabhata - ARB201\"},{\"resourceId\":\"a235i000000tG6EAAU\",\"name\":\"Aryabhata - ARB202\"},{\"resourceId\":\"a235i000000tG6JAAU\",\"name\":\"Aryabhata - ARB203\"},{\"resourceId\":\"a235i000000tG6OAAU\",\"name\":\"Aryabhata - ARB204\"},{\"resourceId\":\"a23fv000001syHxAAI\",\"name\":\"Digital Learning Lab - Studio 102\"},{\"resourceId\":\"a23fv000001t0q1AAA\",\"name\":\"Digital Learning Lab - Studio 103\"}],\"facility_Name\":\"Class Rooms\"}]",
+        "toolCallId": "call_OFplLnvYLGWdmXuJ91jstq36"
+      },
+      {
+        "functionArgs": "{}",
+        "functionName": "getCurrentDateTime",
+        "functionResponse": "Current Date time in user locale is 2026-09-01 19:06:04",
+        "toolCallId": "call_8zVWn1ztCH2PI0nPqiUptAL7"
+      }
+    ],
+    "responseId": "resp_0bce2c5fd14919b4016a96d4c26da487d08f59b44f4b80da19",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 46** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "",
+      "toolResponses": [
+        {
+          "name": "getAllResources",
+          "arguments": "{}",
+          "callId": "call_OFplLnvYLGWdmXuJ91jstq36",
+          "response": "[{\"resources\":[{\"resourceId\":\"a230K00000945JHQAY\",\"name\":\"Gym ( 6:00 am to 2:00 pm slot )\"},{\"resourceId\":\"a230K00000945K5QAI\",\"name\":\"Swimming Pool\"},{\"resourceId\":\"a235i000000nYV0AAM\",\"name\":\"Gym ( 3:00 pm to 11:00 pm slot )\"}],\"facility_Name\":\"Sports Facilities\"},{\"resources\":[{\"resourceId\":\"a230K00000945IiQAI\",\"name\":\"Library - Discussion Room A\"},{\"resourceId\":\"a230K00000945KFQAY\",\"name\":\"Library - Discussion Room C\"},{\"resourceId\":\"a230K00000945KKQAY\",\"name\":\"Library - Discussion Room B\"},{\"resourceId\":\"a230K00000945LrQAI\",\"name\":\"Chandragupta - Focus Room 201 W\"},{\"resourceId\":\"a230K00000945LwQAI\",\"name\":\"Chandragupta - Focus Room 301 W\"},{\"resourceId\":\"a235i000000tGUuAAM\",\"name\":\"Chandragupta - Amphitheatre\"}],\"facility_Name\":\"Conference Rooms\"},{\"resources\":[{\"resourceId\":\"a230K00000945MQQAY\",\"name\":\"Aryabhata - ARB001\"},{\"resourceId\":\"a230K00000945MVQAY\",\"name\":\"Aryabhata - ARB004\"},{\"resourceId\":\"a235i000000tG5kAAE\",\"name\":\"Aryabhata - ARB002\"},{\"resourceId\":\"a235i000000tG5pAAE\",\"name\":\"Aryabhata - ARB101\"},{\"resourceId\":\"a235i000000tG5uAAE\",\"name\":\"Aryabhata - ARB102\"},{\"resourceId\":\"a235i000000tG5zAAE\",\"name\":\"Aryabhata - ARB103\"},{\"resourceId\":\"a235i000000tG64AAE\",\"name\":\"Aryabhata - ARB104\"},{\"resourceId\":\"a235i000000tG69AAE\",\"name\":\"Aryabhata - ARB201\"},{\"resourceId\":\"a235i000000tG6EAAU\",\"name\":\"Aryabhata - ARB202\"},{\"resourceId\":\"a235i000000tG6JAAU\",\"name\":\"Aryabhata - ARB203\"},{\"resourceId\":\"a235i000000tG6OAAU\",\"name\":\"Aryabhata - ARB204\"},{\"resourceId\":\"a23fv000001syHxAAI\",\"name\":\"Digital Learning Lab - Studio 102\"},{\"resourceId\":\"a23fv000001t0q1AAA\",\"name\":\"Digital Learning Lab - Studio 103\"}],\"facility_Name\":\"Class Rooms\"}]"
+        },
+        {
+          "name": "getCurrentDateTime",
+          "arguments": "{}",
+          "callId": "call_8zVWn1ztCH2PI0nPqiUptAL7",
+          "response": "Current Date time in user locale is 2026-09-01 19:06:04"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": [
+        "transfer_to_Gyan_Student_Files_Assistant"
+      ]
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 1931,
+    "outputToken": 48,
+    "requiredActions": [
+      {
+        "functionArgs": "{\"availabilityDate\":\"2026-09-02\",\"resourceIds\":[\"a230K00000945JHQAY\",\"a235i000000nYV0AAM\"]}",
+        "functionName": "getResourceAvailability",
+        "functionResponse": "[{\"resourceId\":\"a230K00000945JHQAY\",\"availabilitySlots\":[{\"startTime\":\"6:00 AM\",\"endTime\":\"7:00 AM\",\"availableDate\":null,\"availableCapacity\":20},{\"startTime\":\"7:00 AM\",\"endTime\":\"8:00 AM\",\"availableDate\":null,\"availableCapacity\":1},{\"startTime\":\"8:00 AM\",\"endTime\":\"9:00 AM\",\"availableDate\":null,\"availableCapacity\":8},{\"startTime\":\"9:00 AM\",\"endTime\":\"10:00 AM\",\"availableDate\":null,\"availableCapacity\":15},{\"startTime\":\"10:00 AM\",\"endTime\":\"11:00 AM\",\"availableDate\":null,\"availableCapacity\":8},{\"startTime\":\"11:00 AM\",\"endTime\":\"12:00 PM\",\"availableDate\":null,\"availableCapacity\":21},{\"startTime\":\"12:00 PM\",\"endTime\":\"1:00 PM\",\"availableDate\":null,\"availableCapacity\":5},{\"startTime\":\"1:00 PM\",\"endTime\":\"2:00 PM\",\"availableDate\":null,\"availableCapacity\":19}]},{\"resourceId\":\"a235i000000nYV0AAM\",\"availabilitySlots\":[{\"startTime\":\"7:00 PM\",\"endTime\":\"8:00 PM\",\"availableDate\":null,\"availableCapacity\":4},{\"startTime\":\"8:00 PM\",\"endTime\":\"9:00 PM\",\"availableDate\":null,\"availableCapacity\":35},{\"startTime\":\"9:00 PM\",\"endTime\":\"10:00 PM\",\"availableDate\":null,\"availableCapacity\":35},{\"startTime\":\"10:00 PM\",\"endTime\":\"11:00 PM\",\"availableDate\":null,\"availableCapacity\":35}]}]",
+        "toolCallId": "call_5mCbFjSaHTnNDByatdrclBVn"
+      }
+    ],
+    "responseId": "resp_06ea6b55929adbb2016a96d4c5ab6487d0bca38be5463368da",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 47** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "",
+      "toolResponses": [
+        {
+          "name": "getResourceAvailability",
+          "arguments": "{\"availabilityDate\":\"2026-09-02\",\"resourceIds\":[\"a230K00000945JHQAY\",\"a235i000000nYV0AAM\"]}",
+          "callId": "call_5mCbFjSaHTnNDByatdrclBVn",
+          "response": "[{\"resourceId\":\"a230K00000945JHQAY\",\"availabilitySlots\":[{\"startTime\":\"6:00 AM\",\"endTime\":\"7:00 AM\",\"availableDate\":null,\"availableCapacity\":20},{\"startTime\":\"7:00 AM\",\"endTime\":\"8:00 AM\",\"availableDate\":null,\"availableCapacity\":1},{\"startTime\":\"8:00 AM\",\"endTime\":\"9:00 AM\",\"availableDate\":null,\"availableCapacity\":8},{\"startTime\":\"9:00 AM\",\"endTime\":\"10:00 AM\",\"availableDate\":null,\"availableCapacity\":15},{\"startTime\":\"10:00 AM\",\"endTime\":\"11:00 AM\",\"availableDate\":null,\"availableCapacity\":8},{\"startTime\":\"11:00 AM\",\"endTime\":\"12:00 PM\",\"availableDate\":null,\"availableCapacity\":21},{\"startTime\":\"12:00 PM\",\"endTime\":\"1:00 PM\",\"availableDate\":null,\"availableCapacity\":5},{\"startTime\":\"1:00 PM\",\"endTime\":\"2:00 PM\",\"availableDate\":null,\"availableCapacity\":19}]},{\"resourceId\":\"a235i000000nYV0AAM\",\"availabilitySlots\":[{\"startTime\":\"7:00 PM\",\"endTime\":\"8:00 PM\",\"availableDate\":null,\"availableCapacity\":4},{\"startTime\":\"8:00 PM\",\"endTime\":\"9:00 PM\",\"availableDate\":null,\"availableCapacity\":35},{\"startTime\":\"9:00 PM\",\"endTime\":\"10:00 PM\",\"availableDate\":null,\"availableCapacity\":35},{\"startTime\":\"10:00 PM\",\"endTime\":\"11:00 PM\",\"availableDate\":null,\"availableCapacity\":35}]}]"
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": [
+        "transfer_to_Gyan_Student_Files_Assistant"
+      ]
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 2338,
+    "outputToken": 84,
+    "requiredActions": [],
+    "responseId": "resp_09b8a24b489e298c016a96d4c83d9c87d0be2b570fee87f063",
+    "status": "completed",
+    "text": "For tomorrow (2026-09-02), the Gym slot from 8:00 AM to 9:00 AM is available with 8 capacity in the Gym (6:00 am to 2:00 pm slot).\n\nI will proceed to book this slot for you. Just to confirm, you want the Gym slot from 8:00 AM to 9:00 AM tomorrow, correct?",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 48** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "getUserThread",
+  "params": {
+    "assistantId": "asst_bt45bMuv1750873146378",
+    "actorId": "0055i00000CwfKqAAJ",
+    "createIfNotExists": false,
+    "refreshToken": 1788269770004
+  },
+  "cacheable": true,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "fileUploadEnabled": false,
+    "threadId": "thread_0055i00000CwfKqAAJ1788263209083"
+  },
+  "cacheable": true
+}
+```
+
+**call 49** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runModeration",
+  "params": {
+    "message": "yes"
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "cacheable": false
+}
+```
+
+**call 50** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "message": "yes",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ]
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 2429,
+    "outputToken": 58,
+    "requiredActions": [
+      {
+        "functionArgs": "{\"userId\":\"0055i00000CwfKqAAJ\",\"resource\":\"a230K00000945JHQAY\",\"startTime\":\"8:00 AM\",\"dateSelected\":\"2026-09-02\"}",
+        "functionName": "createSportsFacilityReservation",
+        "functionResponse": "More than 1 bookings are not allowed for selected resource.",
+        "toolCallId": "call_9SmfnGGtgB3Uzjvs1Y0fpohB"
+      }
+    ],
+    "responseId": "resp_0b78f5783442e024016a96d4d04f8887d082d000d6f594d114",
+    "status": "completed",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 51** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "runAssistant",
+  "params": {
+    "runRequest": {
+      "assistantId": "asst_bt45bMuv1750873146378",
+      "actorId": "0055i00000CwfKqAAJ",
+      "threadId": "thread_0055i00000CwfKqAAJ1788263209083",
+      "message": "",
+      "toolResponses": [
+        {
+          "name": "createSportsFacilityReservation",
+          "arguments": "{\"userId\":\"0055i00000CwfKqAAJ\",\"resource\":\"a230K00000945JHQAY\",\"startTime\":\"8:00 AM\",\"dateSelected\":\"2026-09-02\"}",
+          "callId": "call_9SmfnGGtgB3Uzjvs1Y0fpohB",
+          "response": "More than 1 bookings are not allowed for selected resource."
+        }
+      ],
+      "threadContext": "Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation.The user's date time is 2026-09-01 19:05:16. The Salesforce user record Id is 0055i00000CwfKqAAJ.",
+      "additionalKnowledgeFileIds": [
+        "file-XqT2vLZpHfPJFbCsErDtcE"
+      ],
+      "excludeFunctions": []
+    }
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "inputToken": 2506,
+    "outputToken": 57,
+    "requiredActions": [],
+    "responseId": "resp_0cd741eb3ce62b40016a96d4d3add887d080bd86e10dd3e273",
+    "status": "completed",
+    "text": "It seems you already have a booking for the Gym (6:00 am to 2:00 pm slot) and multiple bookings for the same resource are not allowed. Would you like me to check your existing bookings or assist you with booking a different resource or time slot?",
+    "webSearchCalls": 0
+  },
+  "cacheable": false
+}
+```
+
+**call 52** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "getUserThread",
+  "params": {
+    "assistantId": "asst_bt45bMuv1750873146378",
+    "actorId": "0055i00000CwfKqAAJ",
+    "createIfNotExists": false,
+    "refreshToken": 1788269781611
+  },
+  "cacheable": true,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
+  "returnValue": {
+    "fileUploadEnabled": false,
+    "threadId": "thread_0055i00000CwfKqAAJ1788263209083"
+  },
+  "cacheable": true
+}
+```
+
+**call 53** — page: `https://my.flame.edu.in/s/my-booking`, state: `SUCCESS`
+
+params:
+```json
+{
+  "namespace": "vnai",
+  "classname": "AiAssistantWindowController",
+  "method": "deleteThread",
+  "params": {
+    "threadId": "thread_0055i00000CwfKqAAJ1788263209083"
+  },
+  "cacheable": false,
+  "isContinuation": false
+}
+```
+
+returnValue:
+```json
+{
   "cacheable": false
 }
 ```
