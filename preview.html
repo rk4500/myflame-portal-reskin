@@ -206,8 +206,13 @@
       document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
     }
     if (auto === 'toggle-off') {
+      // The in-shell "Stock UI" button (desktop top bar or mobile top
+      // strip, whichever is visible) is what switches off now — the
+      // always-in-DOM #flame-reskin-toggle is the off-state fallback for
+      // switching back *on*, only ever shown once #flame-reskin-root is
+      // already hidden.
       await wait(200);
-      document.getElementById('flame-reskin-toggle').click();
+      [...document.querySelectorAll('.fr-nav-toggle')].find((b) => b.offsetParent !== null)?.click();
     }
     if (auto === 'cancel-confirm') {
       await wait(400);

@@ -267,6 +267,7 @@
   inset: 0;
   z-index: 2147483000;
   display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -286,35 +287,46 @@
 #flame-reskin-root ::-webkit-scrollbar-thumb:hover { background: var(--bg-elevated-2); }
 #flame-reskin-root * { scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
 
+/* Top bar on desktop (mobile repositions this same markup into a bottom
+   tab bar — see the media query). A vertical sidebar with a colored-square
+   "FL" mark stacked over a name in the top-left corner is, structurally,
+   the exact shape of every app's account switcher; the same mark inline in
+   a horizontal bar just reads as a logo. */
 .fr-nav {
-  width: 232px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  padding: 24px 16px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 60px;
   display: flex;
-  flex-direction: column;
-  gap: 24px;
+  align-items: center;
+  gap: 8px;
 }
-.fr-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
-.fr-brand-mark {
-  width: 32px; height: 32px; border-radius: 9px;
-  background: var(--accent); color: var(--accent-text);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 13px; letter-spacing: -0.02em;
-}
-.fr-brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
-.fr-nav-list { display: flex; flex-direction: column; gap: 4px; }
+.fr-brand { display: flex; align-items: center; gap: 8px; padding-right: 20px; margin-right: 4px; border-right: 1px solid var(--border); }
+.fr-brand-mark { color: var(--accent); width: 22px; height: 22px; }
+.fr-brand-name { font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
+.fr-nav-list { display: flex; align-items: center; gap: 4px; }
 .fr-nav-btn {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px; border-radius: 10px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 8px;
   background: transparent; border: none;
-  color: var(--text-secondary); font: inherit; font-weight: 500;
+  color: var(--text-secondary); font: inherit; font-weight: 500; font-size: 0.875rem;
   cursor: pointer; text-align: left;
   transition: background-color 120ms ease, color 120ms ease;
 }
 .fr-nav-btn:hover { background: var(--bg-elevated); color: var(--text); }
 .fr-nav-btn.is-active { background: var(--bg-elevated-2); color: var(--text); }
 .fr-nav-btn.is-active .icon { color: var(--accent); }
+/* The one action in the bar that isn't navigation — pushed to the far
+   opposite end from the brand mark so it reads as a utility, not a tab. */
+.fr-nav-toggle {
+  margin-left: auto; flex-shrink: 0;
+  background: transparent; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-secondary); font: inherit; font-weight: 500; font-size: 0.8125rem;
+  padding: 7px 12px; cursor: pointer; transition: border-color 120ms ease, color 120ms ease;
+}
+.fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
+
+.fr-mobile-topbar { display: none; }
 
 .fr-content { flex: 1; overflow-y: auto; padding: 40px 48px 80px; display: flex; justify-content: center; align-items: flex-start; }
 .fr-page { max-width: 1320px; width: 100%; animation: fr-fade-in 180ms ease-out; }
@@ -558,8 +570,17 @@
 .fr-gyan-composer { display: flex; gap: 10px; margin-top: 16px; flex-shrink: 0; }
 .fr-gyan-composer .fr-input { flex: 1; }
 
-/* Stock-UI toggle — lives outside #flame-reskin-root so it survives the off-state */
+/* The off-state fallback: only ever visible while the reskin itself is
+   off, at which point #flame-reskin-root (and every in-shell control) is
+   hidden entirely — nothing of ours is ever on screen at the same time, so
+   this one genuinely can't collide with anything regardless of viewport or
+   which tab was last open. Hidden by default; body.flame-reskin-off is the
+   only thing that ever shows it. */
 #flame-reskin-toggle {
+  display: none;
+}
+body.flame-reskin-off #flame-reskin-toggle {
+  display: block;
   position: fixed; left: 16px; bottom: 16px; z-index: 2147483647;
   background: #1a1e28; color: #eef0f6; border: 1px solid #2b3040;
   border-radius: 999px; padding: 8px 16px; font: 600 12px ui-sans-serif, -apple-system, sans-serif;
@@ -570,16 +591,26 @@
 @media (max-width: 760px) {
   .fr-nav {
     position: fixed; left: 0; right: 0; bottom: 0; top: auto;
-    width: auto; height: 68px; flex-direction: row;
-    border-right: none; border-top: 1px solid var(--border);
+    width: auto; height: 68px;
+    border-right: none; border-top: 1px solid var(--border); border-bottom: none;
     padding: 8px 8px calc(8px + var(--flame-navbar-inset)); background: var(--bg); align-items: center; z-index: 5;
     height: calc(68px + var(--flame-navbar-inset));
   }
-  .fr-brand { display: none; }
-  .fr-nav-list { flex-direction: row; flex: 1; justify-content: space-around; }
+  .fr-brand, .fr-nav > .fr-nav-toggle { display: none; }
+  .fr-nav-list { flex: 1; justify-content: space-around; }
   .fr-nav-btn { flex-direction: column; gap: 4px; padding: 6px 10px; }
   .fr-nav-label { font-size: 0.6875rem; }
-  .fr-content { padding: 12px 20px calc(96px + var(--flame-navbar-inset)); }
+  /* A fixed top strip reserves permanent, dedicated space for the one
+     action the bottom tab bar has no room for — the same principle as the
+     bottom bar itself reserving space via .fr-content's bottom padding.
+     Structurally guarantees no tab's own content can ever grow into this
+     corner and collide with it (a floating pill here did, once). */
+  .fr-mobile-topbar {
+    display: flex; justify-content: flex-end; align-items: center;
+    position: fixed; top: 0; left: 0; right: 0; height: 52px;
+    padding: 0 16px; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border);
+  }
+  .fr-content { padding: calc(52px + 12px) 20px calc(96px + var(--flame-navbar-inset)); }
   .fr-book-layout { grid-template-columns: 1fr; }
   .fr-datestrip { gap: 4px; }
   .fr-datestrip-cells { gap: 4px; }
@@ -597,13 +628,6 @@
   .fr-cal-wrap { overflow-x: auto; }
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
-  body:not(.flame-reskin-off) #flame-reskin-toggle { bottom: 80px; }
-  /* Unlike other tabs, Gyan's chat always fills all the way to the bottom
-     of .fr-content's padded box by design (height:100% flex column) — so
-     unlike them, it actually reaches down into the Stock UI pill's mobile
-     position (bottom:80px + its own height) and the composer visibly
-     overlapped it. Give the composer enough clearance instead. */
-  .fr-gyan-composer { margin-bottom: 44px; }
 }
 `;
 
@@ -619,26 +643,37 @@
   // 5. Stock-UI toggle
   // ---------------------------------------------------------------------
 
-  let toggleBtn;
+  let toggleBtn; // module-scope so keepHiding() can re-append it if Aura wipes <body>
 
+  function setReskinOff(nextOff) {
+    document.body.classList.toggle('flame-reskin-off', nextOff);
+    localStorage.setItem('flame-reskin-enabled', nextOff ? 'false' : 'true');
+  }
+
+  // Shared by buildShell()'s desktop top-bar button and its mobile
+  // .fr-mobile-topbar copy — both only need to switch *off* (they live
+  // inside #flame-reskin-root, so they vanish along with everything else
+  // the instant it's hidden; nothing needs to re-paint them afterward).
+  function buildStockToggle(className) {
+    const btn = el('button', { class: className, type: 'button', text: 'Stock UI', title: 'Show the original portal UI' });
+    btn.addEventListener('click', () => setReskinOff(true));
+    return btn;
+  }
+
+  // The one control that has to live outside #flame-reskin-root: switching
+  // back *on* has to work from the stock page, which has none of our DOM.
+  // Only ever visible while off (CSS-gated, see body.flame-reskin-off
+  // #flame-reskin-toggle) — at that point #flame-reskin-root is hidden
+  // entirely, so unlike the in-shell buttons above, this one can never
+  // collide with anything of ours regardless of which tab was last open.
   function buildToggleButton() {
     const stored = localStorage.getItem('flame-reskin-enabled');
-    const enabled = stored !== 'false';
-    document.body.classList.toggle('flame-reskin-off', !enabled);
+    document.body.classList.toggle('flame-reskin-off', stored === 'false');
 
-    toggleBtn = el('button', { id: 'flame-reskin-toggle', type: 'button' });
-    const paint = () => {
-      const isOff = document.body.classList.contains('flame-reskin-off');
-      toggleBtn.textContent = isOff ? 'Custom UI' : 'Stock UI';
-      toggleBtn.title = isOff ? 'Switch back to the reskinned portal' : 'Show the original portal UI';
-    };
-    toggleBtn.addEventListener('click', () => {
-      const nextOff = !document.body.classList.contains('flame-reskin-off');
-      document.body.classList.toggle('flame-reskin-off', nextOff);
-      localStorage.setItem('flame-reskin-enabled', nextOff ? 'false' : 'true');
-      paint();
+    toggleBtn = el('button', {
+      id: 'flame-reskin-toggle', type: 'button', text: 'Custom UI', title: 'Switch back to the reskinned portal',
     });
-    paint();
+    toggleBtn.addEventListener('click', () => setReskinOff(false));
     document.body.appendChild(toggleBtn);
   }
 
@@ -654,6 +689,7 @@
     chevronLeft: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
     chevronRight: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
     sparkle: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8L19 17z"/></svg>',
+    flame: '<svg viewBox="0 0 24 24"><path d="M12 3c-.8 2.6-3.2 3.7-3.2 6.8a3.2 3.2 0 0 0 6.4 0c0-1-.6-1.6-.9-2.4 1.4.9 2.7 2.6 2.7 4.7a5 5 0 0 1-10 0C7 8.3 9.6 5.6 12 3z"/></svg>',
   };
 
   function icon(name, extraClass) {
@@ -836,10 +872,16 @@
   function buildShell() {
     root = el('div', { id: 'flame-reskin-root' });
 
+    // Top bar on desktop, bottom tab bar on mobile (media query repositions
+    // this same markup — see .fr-nav's mobile override). A brand mark in
+    // the corner of a *vertical sidebar* reads like an account switcher
+    // (colored initial square + name, stacked top-left — the exact shape of
+    // every app's profile menu); in a horizontal top bar the same position
+    // just reads as a logo, which is what it actually is.
     const nav = el('nav', { class: 'fr-nav' });
     const brand = el('div', { class: 'fr-brand' }, [
-      el('span', { class: 'fr-brand-mark', text: 'FL' }),
-      el('span', { class: 'fr-brand-name', text: 'Portal' }),
+      icon('flame', 'fr-brand-mark'),
+      el('span', { class: 'fr-brand-name', text: 'FLAME' }),
     ]);
     const navList = el('div', { class: 'fr-nav-list' });
     for (const tab of TABS) {
@@ -849,11 +891,28 @@
       btn.addEventListener('click', () => switchTab(tab.id));
       navList.appendChild(btn);
     }
-    nav.append(brand, navList);
+    // Desktop: sits at the far right of the bar (mirrors the top-right
+    // "settings" convention, as far as possible from the brand mark so it
+    // reads as a utility action, not part of identity). Mobile: this gets
+    // hidden and the dedicated .fr-mobile-topbar's copy takes over instead
+    // — seedBottomTabRow(TABS) style, see buildStockToggle().
+    const desktopToggle = buildStockToggle('fr-nav-toggle');
+    nav.append(brand, navList, desktopToggle);
 
     contentEl = el('main', { class: 'fr-content' });
 
     root.append(nav, contentEl);
+
+    // Mobile only (CSS-gated): the bottom tab bar has no spare room for a
+    // 6th action, and a floating pill collides with whichever tab's own
+    // content happens to reach that corner — already broke once (Gyan's
+    // composer). A dedicated top strip reserves real, permanent space
+    // instead, the same way the bottom nav bar already reserves its own
+    // strip via .fr-content's bottom padding — structurally impossible for
+    // any tab, current or future, to grow into.
+    const mobileTopbar = el('div', { class: 'fr-mobile-topbar' }, [buildStockToggle('fr-nav-toggle')]);
+    root.appendChild(mobileTopbar);
+
     document.body.appendChild(root);
     // Preview/dev only: let the harness pick which tab to boot straight
     // into, instead of racing a separate switchTab() call against this one
@@ -1631,6 +1690,16 @@
   }
 
   async function runGyanTurn(message) {
+    // Root cause of the real "List index out of bounds: 0" failure, found
+    // from a live HAR: the request that failed had "threadId":null. The
+    // composer's submit handler calls runGyanTurn() directly on every send
+    // — it only went through ensureGyanReady() once, on tab mount. The
+    // very first send after resetGyanThread() (which nulls threadId) had
+    // nothing to repopulate it before this ran. ensureGyanReady() already
+    // no-ops once ready, so calling it on every turn is cheap and makes
+    // this impossible to hit again regardless of what cleared the state.
+    await ensureGyanReady();
+
     // runModeration's rejection shape was never observed live (nothing got
     // flagged in the captured session) — fail open rather than block the
     // user's message on an unknown error shape.
