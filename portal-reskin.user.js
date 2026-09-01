@@ -295,7 +295,7 @@
 .fr-nav {
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
-  padding: 0 24px;
+  padding: 0 48px; /* matches .fr-content's left/right padding, so the bar's edges line up with the page content below it */
   height: 60px;
   display: flex;
   align-items: center;
@@ -316,8 +316,15 @@
 .fr-nav-btn:hover { background: var(--bg-elevated); color: var(--text); }
 .fr-nav-btn.is-active { background: var(--bg-elevated-2); color: var(--text); }
 .fr-nav-btn.is-active .icon { color: var(--accent); }
+/* Mobile-only long-press-to-switch-to-stock feedback on the Home tab (see
+   attachHomeLongPress()) — a slow fill exactly matching the hold duration,
+   so releasing early visibly "un-fills" instead of just snapping off.
+   Harmless if ever triggered on desktop by a mouse-down; nothing reads it. */
+.fr-nav-btn.is-pressing { background: var(--bg-elevated-2); transition: background-color 550ms ease; }
 /* The one action in the bar that isn't navigation — pushed to the far
-   opposite end from the brand mark so it reads as a utility, not a tab. */
+   opposite end from the brand mark so it reads as a utility, not a tab.
+   Desktop only; mobile switches via a Home long-press instead (no room
+   for a 6th icon in the bottom tab bar). */
 .fr-nav-toggle {
   margin-left: auto; flex-shrink: 0;
   background: transparent; border: 1px solid var(--border); border-radius: 8px;
@@ -325,8 +332,6 @@
   padding: 7px 12px; cursor: pointer; transition: border-color 120ms ease, color 120ms ease;
 }
 .fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
-
-.fr-mobile-topbar { display: none; }
 
 .fr-content { flex: 1; overflow-y: auto; padding: 40px 48px 80px; display: flex; justify-content: center; align-items: flex-start; }
 .fr-page { max-width: 1320px; width: 100%; animation: fr-fade-in 180ms ease-out; }
@@ -401,6 +406,37 @@
    default (near-black) placeholder color on this dark input background —
    effectively invisible. */
 .fr-input::placeholder { color: var(--text-secondary); opacity: 1; }
+
+/* Custom picker — replaces a native <select> (the Resource dropdown),
+   which renders as the platform's own picker UI (a full-screen wheel on
+   Android WebView) with none of the reskin's styling. */
+.fr-picker { position: relative; }
+.fr-picker-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font: inherit; color: var(--text); background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
+  cursor: pointer; text-align: left; transition: border-color 120ms ease;
+}
+.fr-picker-btn:hover { border-color: var(--text-secondary); }
+.fr-picker.is-open .fr-picker-btn { border-color: var(--accent); }
+.fr-picker-btn-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-picker-btn .icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--text-secondary); transition: transform 120ms ease; }
+.fr-picker.is-open .fr-picker-btn .icon { transform: rotate(180deg); }
+.fr-picker-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20;
+  background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 4px; max-height: 280px; overflow-y: auto;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+  display: none;
+}
+.fr-picker.is-open .fr-picker-panel { display: block; }
+.fr-picker-option {
+  display: block; width: 100%; text-align: left; font: inherit; color: var(--text); font-size: 0.9375rem;
+  background: transparent; border: none; border-radius: 7px; padding: 9px 10px;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-picker-option:hover { background: var(--bg-elevated); }
+.fr-picker-option.is-selected { color: var(--accent); font-weight: 600; }
 
 /* Day navigator (Calendar + Book Slot share this) */
 .fr-daynav { display: flex; align-items: center; gap: 6px; }
@@ -600,17 +636,7 @@ body.flame-reskin-off #flame-reskin-toggle {
   .fr-nav-list { flex: 1; justify-content: space-around; }
   .fr-nav-btn { flex-direction: column; gap: 4px; padding: 6px 10px; }
   .fr-nav-label { font-size: 0.6875rem; }
-  /* A fixed top strip reserves permanent, dedicated space for the one
-     action the bottom tab bar has no room for — the same principle as the
-     bottom bar itself reserving space via .fr-content's bottom padding.
-     Structurally guarantees no tab's own content can ever grow into this
-     corner and collide with it (a floating pill here did, once). */
-  .fr-mobile-topbar {
-    display: flex; justify-content: flex-end; align-items: center;
-    position: fixed; top: 0; left: 0; right: 0; height: 52px;
-    padding: 0 16px; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border);
-  }
-  .fr-content { padding: calc(52px + 12px) 20px calc(96px + var(--flame-navbar-inset)); }
+  .fr-content { padding: 12px 20px calc(96px + var(--flame-navbar-inset)); }
   .fr-book-layout { grid-template-columns: 1fr; }
   .fr-datestrip { gap: 4px; }
   .fr-datestrip-cells { gap: 4px; }
@@ -650,14 +676,63 @@ body.flame-reskin-off #flame-reskin-toggle {
     localStorage.setItem('flame-reskin-enabled', nextOff ? 'false' : 'true');
   }
 
-  // Shared by buildShell()'s desktop top-bar button and its mobile
-  // .fr-mobile-topbar copy — both only need to switch *off* (they live
-  // inside #flame-reskin-root, so they vanish along with everything else
-  // the instant it's hidden; nothing needs to re-paint them afterward).
+  // Desktop top-bar button — only needs to switch *off* (it lives inside
+  // #flame-reskin-root, so it vanishes along with everything else the
+  // instant it's hidden; nothing needs to re-paint it afterward). Hidden
+  // entirely on mobile — see attachHomeLongPress() for the mobile switch.
   function buildStockToggle(className) {
     const btn = el('button', { class: className, type: 'button', text: 'Stock UI', title: 'Show the original portal UI' });
     btn.addEventListener('click', () => setReskinOff(true));
     return btn;
+  }
+
+  // Mobile has no spare chrome for a Stock-UI control: the bottom tab bar
+  // is full, and every fixed/floating overlay tried so far ended up
+  // sitting on top of some tab's own content sooner or later. A long-press
+  // on the Home tab needs none — it's the one tab guaranteed present in
+  // every layout, and long-press-for-a-secondary-action is an established
+  // mobile convention (app icons, list rows) rather than an invented one.
+  // Only fires below the mobile breakpoint; on desktop this is a no-op and
+  // the explicit top-bar button (above) is the real control.
+  function attachHomeLongPress(btn) {
+    const HOLD_MS = 550;
+    let timer = null;
+    let firedLongPress = false;
+    const isMobile = () => window.matchMedia('(max-width: 760px)').matches;
+    const start = () => {
+      if (!isMobile()) return;
+      firedLongPress = false;
+      btn.classList.add('is-pressing');
+      timer = setTimeout(() => {
+        firedLongPress = true;
+        btn.classList.remove('is-pressing');
+        if (navigator.vibrate) navigator.vibrate(15);
+        setReskinOff(true);
+      }, HOLD_MS);
+    };
+    const cancel = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      btn.classList.remove('is-pressing');
+    };
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', cancel);
+    btn.addEventListener('pointerleave', cancel);
+    btn.addEventListener('pointercancel', cancel);
+    // Suppress the tap-to-navigate that would otherwise also fire right
+    // after a long-press release (harmless once off — root is hidden
+    // either way — but pointless work and a visible flash to the Home tab
+    // in the instant before it disappears).
+    btn.addEventListener(
+      'click',
+      (e) => {
+        if (firedLongPress) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true
+    );
   }
 
   // The one control that has to live outside #flame-reskin-root: switching
@@ -688,6 +763,7 @@ body.flame-reskin-off #flame-reskin-toggle {
     book: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 3h6"/></svg>',
     chevronLeft: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
     chevronRight: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+    chevronDown: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
     sparkle: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8L19 17z"/></svg>',
     flame: '<svg viewBox="0 0 24 24"><path d="M12 3c-.8 2.6-3.2 3.7-3.2 6.8a3.2 3.2 0 0 0 6.4 0c0-1-.6-1.6-.9-2.4 1.4.9 2.7 2.6 2.7 4.7a5 5 0 0 1-10 0C7 8.3 9.6 5.6 12 3z"/></svg>',
   };
@@ -889,30 +965,26 @@ body.flame-reskin-off #flame-reskin-toggle {
       btn.appendChild(icon(tab.icon));
       btn.appendChild(el('span', { class: 'fr-nav-label', text: tab.label }));
       btn.addEventListener('click', () => switchTab(tab.id));
+      // Mobile-only escape hatch: the bottom tab bar has no spare room for
+      // a 6th icon, and every attempt at a floating/fixed toggle control so
+      // far has ended up sitting on top of some tab's own content (a pill
+      // collided with Gyan's composer; a dedicated top strip worked but was
+      // extra permanent chrome eating vertical space on every single tab,
+      // which is worse). A long-press on Home needs zero chrome of its own.
+      if (tab.id === 'home') attachHomeLongPress(btn);
       navList.appendChild(btn);
     }
-    // Desktop: sits at the far right of the bar (mirrors the top-right
+    // Desktop only: sits at the far right of the bar (mirrors the top-right
     // "settings" convention, as far as possible from the brand mark so it
-    // reads as a utility action, not part of identity). Mobile: this gets
-    // hidden and the dedicated .fr-mobile-topbar's copy takes over instead
-    // — seedBottomTabRow(TABS) style, see buildStockToggle().
+    // reads as a utility action, not part of identity). Hidden on mobile,
+    // where the bar is the bottom tab row and long-pressing Home (above)
+    // is the switch instead.
     const desktopToggle = buildStockToggle('fr-nav-toggle');
     nav.append(brand, navList, desktopToggle);
 
     contentEl = el('main', { class: 'fr-content' });
 
     root.append(nav, contentEl);
-
-    // Mobile only (CSS-gated): the bottom tab bar has no spare room for a
-    // 6th action, and a floating pill collides with whichever tab's own
-    // content happens to reach that corner — already broke once (Gyan's
-    // composer). A dedicated top strip reserves real, permanent space
-    // instead, the same way the bottom nav bar already reserves its own
-    // strip via .fr-content's bottom padding — structurally impossible for
-    // any tab, current or future, to grow into.
-    const mobileTopbar = el('div', { class: 'fr-mobile-topbar' }, [buildStockToggle('fr-nav-toggle')]);
-    root.appendChild(mobileTopbar);
-
     document.body.appendChild(root);
     // Preview/dev only: let the harness pick which tab to boot straight
     // into, instead of racing a separate switchTab() call against this one
@@ -981,6 +1053,77 @@ body.flame-reskin-off #flame-reskin-toggle {
     // is only ever ±7 days.
     strip.append(prevBtn, cells, nextBtn);
     return strip;
+  }
+
+  // Custom dropdown — replaces a native <select> (used for Book Slot's
+  // Resource picker), which renders as the platform's own picker UI (a
+  // full-screen wheel on Android WebView) with none of the reskin's
+  // styling. Exposes a small value/setOptions surface rather than trying
+  // to imitate <select>'s full DOM API, since only that much is ever used.
+  function buildPicker({ ariaLabel, onChange }) {
+    const wrap = el('div', { class: 'fr-picker' });
+    const btn = el('button', {
+      class: 'fr-picker-btn', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': ariaLabel,
+    });
+    const btnLabel = el('span', { class: 'fr-picker-btn-label' });
+    btn.append(btnLabel, icon('chevronDown'));
+    const panel = el('div', { class: 'fr-picker-panel', role: 'listbox' });
+    wrap.append(btn, panel);
+
+    let options = [];
+    let value = null;
+
+    function paintPanel() {
+      panel.replaceChildren();
+      for (const opt of options) {
+        const item = el('button', {
+          class: `fr-picker-option${opt.value === value ? ' is-selected' : ''}`,
+          type: 'button', role: 'option', 'aria-selected': String(opt.value === value), text: opt.text,
+        });
+        item.addEventListener('click', () => {
+          value = opt.value;
+          btnLabel.textContent = opt.text;
+          closePanel();
+          if (onChange) onChange(value);
+        });
+        panel.appendChild(item);
+      }
+    }
+
+    function onDocClick(e) {
+      if (!wrap.contains(e.target)) closePanel();
+    }
+    function openPanel() {
+      wrap.classList.add('is-open');
+      btn.setAttribute('aria-expanded', 'true');
+      document.addEventListener('click', onDocClick, true);
+    }
+    function closePanel() {
+      wrap.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('click', onDocClick, true);
+    }
+    btn.addEventListener('click', () => (wrap.classList.contains('is-open') ? closePanel() : openPanel()));
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePanel();
+    });
+
+    return {
+      el: wrap,
+      get value() {
+        return value;
+      },
+      set value(v) {
+        value = v;
+        const found = options.find((o) => o.value === v);
+        btnLabel.textContent = found ? found.text : '';
+        paintPanel();
+      },
+      setOptions(newOptions) {
+        options = newOptions;
+        paintPanel();
+      },
+    };
   }
 
   // ---------------------------------------------------------------------
@@ -1421,8 +1564,8 @@ body.flame-reskin-off #flame-reskin-toggle {
     const facilityList = el('div', { class: 'fr-facility-list' });
     const resourceField = el('div', { class: 'fr-book-field' });
     resourceField.appendChild(el('span', { class: 'fr-book-field-label', text: 'Resource' }));
-    const resourceSelect = el('select', { class: 'fr-select', 'aria-label': 'Resource' });
-    resourceField.appendChild(resourceSelect);
+    const resourcePicker = buildPicker({ ariaLabel: 'Resource', onChange: () => refreshAvailability() });
+    resourceField.appendChild(resourcePicker.el);
 
     const dayField = el('div', { class: 'fr-book-field' });
 
@@ -1435,7 +1578,7 @@ body.flame-reskin-off #flame-reskin-toggle {
 
     function currentResourceName() {
       const facility = facilities[bookState.categoryIdx];
-      const r = facility && facility.resources.find((r) => r.resourceId === resourceSelect.value);
+      const r = facility && facility.resources.find((r) => r.resourceId === resourcePicker.value);
       return r ? r.name : '';
     }
 
@@ -1445,7 +1588,7 @@ body.flame-reskin-off #flame-reskin-toggle {
       confirmWrap.replaceChildren();
       try {
         const raw2 = await callAura('CustomBookingController', 'getResourceAvailability', {
-          resourceId: resourceSelect.value,
+          resourceId: resourcePicker.value,
           bookingDate: isoDateLocal(bookState.date),
         });
         let parsed = null;
@@ -1508,7 +1651,7 @@ body.flame-reskin-off #flame-reskin-toggle {
             dateSelected: isoDateLocal(bookState.date),
             startTime: slot.startTime,
             endTime: slot.endTime,
-            resource: resourceSelect.value,
+            resource: resourcePicker.value,
             bookingPurpose: purposeInput ? purposeInput.value || '' : '',
             coAttendee: attendeeInput ? attendeeInput.value || '' : '',
             userId,
@@ -1550,18 +1693,15 @@ body.flame-reskin-off #flame-reskin-toggle {
         bookState.categoryIdx = idx;
         bookState.resourceId = facility.resources[0].resourceId;
         facilityList.querySelectorAll('.fr-facility-item').forEach((b, i) => b.classList.toggle('is-active', i === idx));
-        resourceSelect.replaceChildren();
-        for (const r of facility.resources) resourceSelect.appendChild(el('option', { value: r.resourceId, text: r.name }));
+        resourcePicker.setOptions(facility.resources.map((r) => ({ value: r.resourceId, text: r.name })));
+        resourcePicker.value = bookState.resourceId;
         refreshAvailability();
       });
       facilityList.appendChild(btn);
     });
 
-    for (const r of facilities[bookState.categoryIdx].resources) {
-      resourceSelect.appendChild(el('option', { value: r.resourceId, text: r.name }));
-    }
-    resourceSelect.value = bookState.resourceId;
-    resourceSelect.addEventListener('change', refreshAvailability);
+    resourcePicker.setOptions(facilities[bookState.categoryIdx].resources.map((r) => ({ value: r.resourceId, text: r.name })));
+    resourcePicker.value = bookState.resourceId;
 
     // Facilities are cached above and only the availability results depend
     // on the date, so stepping the day rebuilds just the nav control and

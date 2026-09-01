@@ -134,6 +134,10 @@
       await wait(400);
       document.querySelector('.fr-slot:not(:disabled)').click();
     }
+    if (auto === 'resource-picker-open') {
+      await wait(200);
+      document.querySelector('.fr-picker-btn').click();
+    }
     if (auto === 'week') {
       await wait(200);
       [...document.querySelectorAll('.fr-view-toggle button')].find((b) => b.textContent === 'Week').click();
@@ -206,13 +210,19 @@
       document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
     }
     if (auto === 'toggle-off') {
-      // The in-shell "Stock UI" button (desktop top bar or mobile top
-      // strip, whichever is visible) is what switches off now — the
-      // always-in-DOM #flame-reskin-toggle is the off-state fallback for
-      // switching back *on*, only ever shown once #flame-reskin-root is
-      // already hidden.
+      // Desktop's explicit "Stock UI" top-bar button — the always-in-DOM
+      // #flame-reskin-toggle is the off-state fallback for switching back
+      // *on*, only ever shown once #flame-reskin-root is already hidden.
       await wait(200);
-      [...document.querySelectorAll('.fr-nav-toggle')].find((b) => b.offsetParent !== null)?.click();
+      document.querySelector('.fr-nav-toggle')?.click();
+    }
+    if (auto === 'toggle-off-longpress') {
+      // Mobile has no visible toggle button at all — simulates holding
+      // the Home tab past attachHomeLongPress()'s 550ms threshold.
+      await wait(200);
+      const homeBtn = document.querySelector('.fr-nav-btn[data-tab="home"]');
+      homeBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      await wait(700);
     }
     if (auto === 'cancel-confirm') {
       await wait(400);
