@@ -41,7 +41,15 @@
       welcomeMessage: 'Welcome to Gyan',
       introductionText: 'Ask about classes, bookings, campus info, or anything else Gyan can help with.',
     },
-    'AiAssistantWindowController.getUserThread': { threadId: 'thread_preview1788263209083', fileUploadEnabled: false },
+    // Real backend behavior (confirmed via a live HAR): calling this with
+    // an empty assistantId returns {} (no threadId) — only a call with the
+    // real assistantId returns one. Model that distinction here so the
+    // preview actually exercises ensureGyanReady()'s two-call sequence
+    // instead of masking a regression by always returning a threadId.
+    'AiAssistantWindowController.getUserThread': function (params) {
+      if (!params.assistantId) return {};
+      return { threadId: 'thread_preview1788263209083', fileUploadEnabled: false };
+    },
     'AiAssistantWindowController.runModeration': {},
     'AiAssistantWindowController.deleteThread': {},
     'AiAssistantWindowController.runAssistant': function (params) {
@@ -181,7 +189,7 @@
     if (auto === 'gyan-chat') {
       // Exercises both the zero-hop and one-hop (transfer -> toolResponses
       // relay -> text) paths through the preview stub.
-      await wait(300);
+      await wait(500);
       const send = async (text) => {
         document.querySelector('.fr-gyan-composer .fr-input').value = text;
         document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
@@ -194,13 +202,13 @@
       // Exercises the real "List index out of bounds: 0" failure path —
       // error bubble shown, composer re-enabled, thread auto-reset in the
       // background (not visible here, but shouldn't throw/hang).
-      await wait(300);
+      await wait(500);
       document.querySelector('.fr-gyan-composer .fr-input').value = 'please trigger error';
       document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
       await wait(400);
     }
     if (auto === 'gyan-newchat') {
-      await wait(300);
+      await wait(500);
       const send = async (text) => {
         document.querySelector('.fr-gyan-composer .fr-input').value = text;
         document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
@@ -213,7 +221,7 @@
     if (auto === 'gyan-typing') {
       // Screenshot mid-send, before the stub's canned reply resolves, to
       // check the "thinking" bubble + disabled composer state.
-      await wait(300);
+      await wait(500);
       document.querySelector('.fr-gyan-composer .fr-input').value = 'whats for dinner today';
       document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
     }

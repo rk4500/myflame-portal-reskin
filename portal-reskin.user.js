@@ -1803,11 +1803,30 @@ body.flame-reskin-off #flame-reskin-toggle {
     gyanState.welcomeMessage = assistant.welcomeMessage || '';
     gyanState.introductionText = assistant.introductionText || '';
 
+    // Confirmed from a live HAR: calling getUserThread once, directly with
+    // the real assistantId, comes back `{}` — no threadId — even with
+    // createIfNotExists:true, and runAssistant then fails server-side with
+    // "List index out of bounds: 0" because it gets no threadId at all
+    // (JSON.stringify drops the undefined key entirely). The original
+    // reference capture showed the real browser UI calling getUserThread
+    // *twice*: once with assistantId:"" first (dismissed at the time as a
+    // pointless probe, its own response `{}` and ignored), then again with
+    // the real assistantId — only the second call got a real threadId
+    // back. Replicating that exact two-call sequence fixes it: whatever
+    // that first call primes server-side, createIfNotExists apparently
+    // depends on it having run first.
+    await callAura(
+      'AiAssistantWindowController', 'getUserThread',
+      { assistantId: '', actorId: userId, createIfNotExists: true, refreshToken: 0 },
+      true, 'vnai'
+    ).catch(() => {}); // best-effort — only its (undocumented) side effect matters, not its result
+
     const thread = await callAura(
       'AiAssistantWindowController', 'getUserThread',
       { assistantId: gyanState.assistantId, actorId: userId, createIfNotExists: true, refreshToken: 0 },
       true, 'vnai'
     );
+    if (!thread.threadId) throw new Error('Gyan did not return a conversation thread');
     gyanState.threadId = thread.threadId;
     gyanState.ready = true;
   }
