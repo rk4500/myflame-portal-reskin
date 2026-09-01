@@ -1807,50 +1807,40 @@ body.flame-reskin-off #flame-reskin-toggle {
     // the real assistantId, comes back `{}` — no threadId — even with
     // createIfNotExists:true, and runAssistant then fails server-side with
     // "List index out of bounds: 0" because it gets no threadId at all
-    // (JSON.stringify drops the undefined key entirely). The original
-    // reference capture showed the real browser UI calling getUserThread
-    // *twice*: once with assistantId:"" first (dismissed at the time as a
-    // pointless probe, its own response `{}` and ignored), then again with
-    // the real assistantId — only the second call got a real threadId
-    // back. Replicating that exact two-call sequence fixes it: whatever
-    // that first call primes server-side, createIfNotExists apparently
-    // depends on it having run first.
+    // (JSON.stringify drops the undefined key entirely).
+    //
+    // Tried replicating the reference capture's two-call getUserThread
+    // sequence (assistantId:"" first, then the real one) on the theory
+    // that the first call primes something server-side — confirmed via a
+    // second live HAR that this alone is NOT sufficient; it still comes
+    // back threadId-less. Current best guess, unconfirmed: createIfNotExists
+    // may only ever *find* an existing thread, never actually *create* one
+    // — the reference capture's "success" was likely just a lookup of a
+    // thread that already existed from an earlier real "Start chat" click
+    // in the stock UI, not evidence the create path itself works. Kept the
+    // two-call sequence anyway since it's cheap and matches the one known
+    // working capture, but the guard below is what actually matters now:
+    // fail loudly and immediately here rather than let a threadId-less
+    // request reach runAssistant and hit the cryptic backend crash.
     await callAura(
       'AiAssistantWindowController', 'getUserThread',
       { assistantId: '', actorId: userId, createIfNotExists: true, refreshToken: 0 },
       true, 'vnai'
-    ).catch(() => {}); // best-effort — only its (undocumented) side effect matters, not its result
+    ).catch(() => {}); // best-effort — only its (still-unconfirmed) side effect matters, not its result
 
     const thread = await callAura(
       'AiAssistantWindowController', 'getUserThread',
       { assistantId: gyanState.assistantId, actorId: userId, createIfNotExists: true, refreshToken: 0 },
       true, 'vnai'
     );
-    if (!thread.threadId) throw new Error('Gyan did not return a conversation thread');
+    if (!thread.threadId) {
+      throw new Error(
+        "Gyan couldn't start a conversation. Try switching to the Stock UI, opening Gyan there and tapping " +
+        '"Start chat" once, then switch back — that flow is confirmed to work.'
+      );
+    }
     gyanState.threadId = thread.threadId;
     gyanState.ready = true;
-  }
-
-  // getUserThread(createIfNotExists:true) reconnects to the same persistent
-  // server-side thread every time (threads live per user+assistant, not per
-  // page load) — so a thread that's gotten into a bad state server-side
-  // (e.g. "List index out of bounds: 0" from runAssistant, seen live) stays
-  // broken across reloads too. Delete it and let the next ensureGyanReady()
-  // create a fresh one. Best-effort: deleteThread failing shouldn't block
-  // the reset, there's nothing more we can do with the response either way.
-  async function resetGyanThread({ clearMessages = false } = {}) {
-    const oldThreadId = gyanState.threadId;
-    gyanState.ready = false;
-    gyanState.threadId = null;
-    gyanState.sending = false;
-    if (clearMessages) gyanState.messages = [];
-    if (oldThreadId) {
-      try {
-        await callAura('AiAssistantWindowController', 'deleteThread', { threadId: oldThreadId }, false, 'vnai');
-      } catch (e) {
-        console.warn('[flame-reskin] failed to delete old gyan thread, continuing anyway', e);
-      }
-    }
   }
 
   // A transfer_to_* requiredAction's functionArgs carries a userQuery —
@@ -1869,14 +1859,13 @@ body.flame-reskin-off #flame-reskin-toggle {
   }
 
   async function runGyanTurn(message) {
-    // Root cause of the real "List index out of bounds: 0" failure, found
-    // from a live HAR: the request that failed had "threadId":null. The
-    // composer's submit handler calls runGyanTurn() directly on every send
-    // — it only went through ensureGyanReady() once, on tab mount. The
-    // very first send after resetGyanThread() (which nulls threadId) had
-    // nothing to repopulate it before this ran. ensureGyanReady() already
-    // no-ops once ready, so calling it on every turn is cheap and makes
-    // this impossible to hit again regardless of what cleared the state.
+    // The composer's submit handler calls runGyanTurn() directly on every
+    // send — it only went through ensureGyanReady() once, on tab mount.
+    // (Originally caught a bug this way: something had nulled gyanState's
+    // threadId between sends and nothing repopulated it before the next
+    // runAssistant call went out.) ensureGyanReady() already no-ops once
+    // ready, so calling it on every turn is cheap and guards against that
+    // class of bug regardless of what clears the state in the future.
     await ensureGyanReady();
 
     // runModeration's rejection shape was never observed live (nothing got
@@ -1935,9 +1924,15 @@ body.flame-reskin-off #flame-reskin-toggle {
     const headerRow = el('div', { class: 'fr-group-heading-row' });
     headerRow.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName, style: 'margin: 0;' }));
     const newChatBtn = el('button', { class: 'fr-link-btn', type: 'button', text: 'New chat' });
-    newChatBtn.addEventListener('click', async () => {
-      newChatBtn.disabled = true;
-      await resetGyanThread({ clearMessages: true });
+    newChatBtn.addEventListener('click', () => {
+      // Deliberately local-only: clears the visible transcript but does
+      // NOT call deleteThread/resetGyanThread. getUserThread(createIfNotExists:true)
+      // looks like it can only ever find an existing thread, not actually
+      // create one — deleting the real thread here risks the same
+      // permanent "Gyan did not return a conversation thread" failure this
+      // button is meant to recover from. The real thread just keeps
+      // going server-side under the blank-looking view; harmless.
+      gyanState.messages = [];
       if (token === activeToken) switchTab('gyan');
     });
     headerRow.appendChild(newChatBtn);
@@ -1993,11 +1988,17 @@ body.flame-reskin-off #flame-reskin-toggle {
         gyanState.messages.push({ role: 'assistant', text: reply });
       } catch (err) {
         gyanState.messages.push({ role: 'assistant', text: `Sorry, something went wrong: ${err.message}` });
-        // Whatever the cause, retrying against the same server-side thread
-        // tends to just fail the same way again — reset it in the
-        // background (keeping the visible transcript) so the next message
-        // starts clean instead of repeating the same error forever.
-        await resetGyanThread();
+        // Deliberately NOT auto-calling resetGyanThread() here anymore.
+        // It used to run on every error, and very likely deleted the
+        // user's one real working thread for good in the process:
+        // getUserThread(createIfNotExists:true) looks like it only ever
+        // *finds* an existing thread, never actually *creates* one — the
+        // reference capture's "successful creation" was almost certainly
+        // just a lookup of a thread that already existed from an earlier
+        // real "Start chat" click in the stock UI, not evidence the create
+        // path itself works. Auto-deleting on every error, unconditionally,
+        // repeatedly, was an irreversible action taken without asking —
+        // exactly the kind of thing that shouldn't happen automatically.
       } finally {
         gyanState.sending = false;
         if (token === activeToken) paintMessages();
