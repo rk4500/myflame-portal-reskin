@@ -422,14 +422,24 @@
 .fr-picker-btn-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fr-picker-btn .icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--text-secondary); transition: transform 120ms ease; }
 .fr-picker.is-open .fr-picker-btn .icon { transform: rotate(180deg); }
+/* Split into an outer frame (owns the border/radius/shadow, clips via
+   overflow:hidden) and an inner scroll list (owns overflow-y:auto) rather
+   than putting both the radius and the scrolling on one element — a
+   scrolling element's own border-radius isn't reliably clipped against its
+   scrollbar on every renderer (confirmed broken on Android WebView: the
+   right corners squared off under the native scrollbar track, invisible
+   in desktop testing since desktop's custom-styled scrollbar doesn't
+   expose the same gap). overflow:hidden on a non-scrolling ancestor clips
+   unconditionally regardless of how the descendant's own scrollbar renders. */
 .fr-picker-panel {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20;
   background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px;
-  padding: 4px; max-height: 280px; overflow-y: auto;
+  overflow: hidden;
   box-shadow: 0 12px 28px rgba(0,0,0,0.5);
   display: none;
 }
 .fr-picker.is-open .fr-picker-panel { display: block; }
+.fr-picker-list { padding: 4px; max-height: 280px; overflow-y: auto; }
 .fr-picker-option {
   display: block; width: 100%; text-align: left; font: inherit; color: var(--text); font-size: 0.9375rem;
   background: transparent; border: none; border-radius: 7px; padding: 9px 10px;
@@ -466,7 +476,13 @@
 }
 .fr-view-toggle button.is-active { background: var(--bg-elevated-2); color: var(--text); }
 
-.fr-cal-wrap { display: flex; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+/* Same split as .fr-picker-panel: the frame owns the border/radius and
+   clips unconditionally via overflow:hidden; the scroll happens on a
+   separate inner element instead of on the radius-bearing one itself
+   (unreliable on Android WebView — right corners squared off under the
+   scrollbar, invisible in desktop testing). */
+.fr-cal-wrap { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.fr-cal-scroll { display: flex; overflow-x: auto; }
 .fr-cal-gutter { width: 52px; flex-shrink: 0; border-right: 1px solid var(--border); }
 .fr-cal-gutter-header { height: 40px; border-bottom: 1px solid var(--border); }
 .fr-cal-hour-label {
@@ -600,8 +616,8 @@
   max-width: 75%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap;
   word-break: break-word; line-height: 1.45;
 }
-.fr-gyan-msg--user .fr-gyan-bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
-.fr-gyan-msg--assistant .fr-gyan-bubble { background: var(--bg-elevated); color: var(--text); border-bottom-left-radius: 4px; }
+.fr-gyan-msg--user .fr-gyan-bubble { background: var(--accent); color: var(--accent-text); }
+.fr-gyan-msg--assistant .fr-gyan-bubble { background: var(--bg-elevated); color: var(--text); }
 .fr-gyan-typing { color: var(--text-secondary); font-style: italic; }
 .fr-gyan-composer { display: flex; gap: 10px; margin-top: 16px; flex-shrink: 0; }
 .fr-gyan-composer .fr-input { flex: 1; }
@@ -648,10 +664,10 @@ body.flame-reskin-off #flame-reskin-toggle {
      gets its own full-width row below (same grid, different areas). */
   .fr-cal-header { grid-template-areas: "title toggle" "nav nav"; }
   .fr-slot-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
-  /* Week view: let the grid overflow-scroll horizontally at a readable
-     column width instead of squeezing 7 days into the viewport — the JS
-     gives .fr-cal-days a min-width in week mode to force this. */
-  .fr-cal-wrap { overflow-x: auto; }
+  /* Week view: .fr-cal-scroll (always overflow-x:auto) lets the grid
+     scroll horizontally at a readable column width instead of squeezing 7
+     days into the viewport — the JS gives .fr-cal-days a min-width in
+     week mode to force this. */
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
 }
@@ -1067,14 +1083,16 @@ body.flame-reskin-off #flame-reskin-toggle {
     });
     const btnLabel = el('span', { class: 'fr-picker-btn-label' });
     btn.append(btnLabel, icon('chevronDown'));
-    const panel = el('div', { class: 'fr-picker-panel', role: 'listbox' });
+    const panel = el('div', { class: 'fr-picker-panel' });
+    const list = el('div', { class: 'fr-picker-list', role: 'listbox' });
+    panel.appendChild(list);
     wrap.append(btn, panel);
 
     let options = [];
     let value = null;
 
     function paintPanel() {
-      panel.replaceChildren();
+      list.replaceChildren();
       for (const opt of options) {
         const item = el('button', {
           class: `fr-picker-option${opt.value === value ? ' is-selected' : ''}`,
@@ -1086,7 +1104,7 @@ body.flame-reskin-off #flame-reskin-toggle {
           closePanel();
           if (onChange) onChange(value);
         });
-        panel.appendChild(item);
+        list.appendChild(item);
       }
     }
 
@@ -1401,6 +1419,7 @@ body.flame-reskin-off #flame-reskin-toggle {
     page.appendChild(header);
 
     const calWrap = el('div', { class: 'fr-cal-wrap' });
+    const calScroll = el('div', { class: 'fr-cal-scroll' });
     const gutter = el('div', { class: 'fr-cal-gutter', style: `--fr-hour-h: ${CAL_HOUR_HEIGHT}px;` });
     // Week mode's day columns each carry a 40px .fr-cal-day-header, so the
     // gutter needs a matching blank spacer to keep hours aligned with the
@@ -1443,7 +1462,8 @@ body.flame-reskin-off #flame-reskin-toggle {
       }
     }
 
-    calWrap.append(gutter, daysWrap);
+    calScroll.append(gutter, daysWrap);
+    calWrap.appendChild(calScroll);
     page.appendChild(calWrap);
     contentEl.replaceChildren(page);
   }

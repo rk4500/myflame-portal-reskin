@@ -138,6 +138,14 @@
       await wait(200);
       document.querySelector('.fr-picker-btn').click();
     }
+    if (auto === 'resource-picker-overflow') {
+      // Class Rooms has 13 resources — overflows the panel's 280px
+      // max-height, actually triggering the scrollbar this is testing.
+      await wait(200);
+      [...document.querySelectorAll('.fr-facility-item')].find((b) => b.textContent === 'Class Rooms').click();
+      await wait(200);
+      document.querySelector('.fr-picker-btn').click();
+    }
     if (auto === 'week') {
       await wait(200);
       [...document.querySelectorAll('.fr-view-toggle button')].find((b) => b.textContent === 'Week').click();
