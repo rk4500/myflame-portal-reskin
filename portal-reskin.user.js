@@ -534,8 +534,17 @@
 
 /* Gyan chat tab */
 .fr-gyan-page { display: flex; flex-direction: column; height: 100%; min-height: 0; max-width: 720px; }
-.fr-gyan-messages { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
-.fr-gyan-list { display: flex; flex-direction: column; gap: 12px; }
+.fr-gyan-messages { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; }
+/* A short exchange used to sit flush against the header, leaving a dead
+   gap down to the composer — the opposite of every chat convention, where
+   the live edge of the conversation stays anchored next to the input. The
+   auto margin hugs the list to the bottom when it's shorter than the
+   viewport and steps out of the way once real content overflows, so
+   scrolling still works normally for a long conversation. The empty/
+   welcome state is a different kind of content (an explanation, not a
+   conversation) and gets centered instead, not bottom-anchored. */
+.fr-gyan-list { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+.fr-gyan-messages > .fr-empty { margin: auto 0; }
 .fr-gyan-msg { display: flex; }
 .fr-gyan-msg--user { justify-content: flex-end; }
 .fr-gyan-msg--assistant { justify-content: flex-start; }
@@ -1584,6 +1593,28 @@
     gyanState.ready = true;
   }
 
+  // getUserThread(createIfNotExists:true) reconnects to the same persistent
+  // server-side thread every time (threads live per user+assistant, not per
+  // page load) — so a thread that's gotten into a bad state server-side
+  // (e.g. "List index out of bounds: 0" from runAssistant, seen live) stays
+  // broken across reloads too. Delete it and let the next ensureGyanReady()
+  // create a fresh one. Best-effort: deleteThread failing shouldn't block
+  // the reset, there's nothing more we can do with the response either way.
+  async function resetGyanThread({ clearMessages = false } = {}) {
+    const oldThreadId = gyanState.threadId;
+    gyanState.ready = false;
+    gyanState.threadId = null;
+    gyanState.sending = false;
+    if (clearMessages) gyanState.messages = [];
+    if (oldThreadId) {
+      try {
+        await callAura('AiAssistantWindowController', 'deleteThread', { threadId: oldThreadId }, false, 'vnai');
+      } catch (e) {
+        console.warn('[flame-reskin] failed to delete old gyan thread, continuing anyway', e);
+      }
+    }
+  }
+
   // A transfer_to_* requiredAction's functionArgs carries a userQuery —
   // that becomes the *next* call's top-level message (confirmed against a
   // real capture: "book me a gym slot..." transferred through two
@@ -1653,7 +1684,16 @@
     if (token !== activeToken) return;
 
     const page = el('div', { class: 'fr-page fr-gyan-page' });
-    page.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName }));
+    const headerRow = el('div', { class: 'fr-group-heading-row' });
+    headerRow.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName, style: 'margin: 0;' }));
+    const newChatBtn = el('button', { class: 'fr-link-btn', type: 'button', text: 'New chat' });
+    newChatBtn.addEventListener('click', async () => {
+      newChatBtn.disabled = true;
+      await resetGyanThread({ clearMessages: true });
+      if (token === activeToken) switchTab('gyan');
+    });
+    headerRow.appendChild(newChatBtn);
+    page.appendChild(headerRow);
 
     const messagesEl = el('div', { class: 'fr-gyan-messages' });
     const composerForm = el('form', { class: 'fr-gyan-composer' });
@@ -1705,6 +1745,11 @@
         gyanState.messages.push({ role: 'assistant', text: reply });
       } catch (err) {
         gyanState.messages.push({ role: 'assistant', text: `Sorry, something went wrong: ${err.message}` });
+        // Whatever the cause, retrying against the same server-side thread
+        // tends to just fail the same way again — reset it in the
+        // background (keeping the visible transcript) so the next message
+        // starts clean instead of repeating the same error forever.
+        await resetGyanThread();
       } finally {
         gyanState.sending = false;
         if (token === activeToken) paintMessages();

@@ -58,6 +58,11 @@
         };
       }
       const msg = (req.message || '').toLowerCase();
+      if (msg.includes('trigger error')) {
+        // Simulates the real "List index out of bounds: 0" failure seen
+        // live — exercises runGyanTurn's catch path + the auto thread-reset.
+        throw new Error('List index out of bounds: 0');
+      }
       if (msg.includes('menu') || msg.includes('dinner') || msg.includes('gym') || msg.includes('book')) {
         return {
           requiredActions: [{
@@ -172,6 +177,26 @@
       };
       await send('hi there');
       await send('whats for dinner today');
+    }
+    if (auto === 'gyan-error') {
+      // Exercises the real "List index out of bounds: 0" failure path —
+      // error bubble shown, composer re-enabled, thread auto-reset in the
+      // background (not visible here, but shouldn't throw/hang).
+      await wait(300);
+      document.querySelector('.fr-gyan-composer .fr-input').value = 'please trigger error';
+      document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
+      await wait(400);
+    }
+    if (auto === 'gyan-newchat') {
+      await wait(300);
+      const send = async (text) => {
+        document.querySelector('.fr-gyan-composer .fr-input').value = text;
+        document.querySelector('.fr-gyan-composer').dispatchEvent(new Event('submit', { cancelable: true }));
+        await wait(400);
+      };
+      await send('hi there');
+      document.querySelector('.fr-gyan-page .fr-link-btn').click();
+      await wait(400);
     }
     if (auto === 'gyan-typing') {
       // Screenshot mid-send, before the stub's canned reply resolves, to
