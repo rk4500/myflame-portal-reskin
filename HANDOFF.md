@@ -362,5 +362,5 @@ Phone reconnected mid-session. Ran the full build pipeline documented above ("Ex
 - **No phone connected this session** (`adb devices` empty) — could not `adb install -r` or re-verify on-device. Build is untested live; only verified via the preview-harness screenshots and the byte-match check above.
 - **Uploaded as a GitHub release**: `gh release create v2026.09.01 MyFLAME-reskin-working.apk --title "MyFLAME reskin — 2026-09-01" --notes "..."` → https://github.com/rk4500/myflame-portal-reskin/releases/tag/v2026.09.01. This is now the easiest way to get the APK onto the phone (download from the release, no PC/adb needed) as an alternative to the existing `/sdcard/Download/MyFLAME-reskin.apk` push — **that on-device copy is now one build behind** (predates this fix); worth an `adb push` or downloading the release directly next time the phone's connected.
 
-### Loose end
-- Next session: re-save the `hook.js` `SCRIPT`-regeneration script into `.patch-tools/` (e.g. `regen-hook-script.py`) instead of rewriting it from scratch each time — it's small, stable, and has now been reconstructed twice from HANDOFF prose alone.
+### Loose end — resolved same session
+- `hook.js`'s `SCRIPT`-regeneration script saved to `.patch-tools/regen-hook-script.py` (gitignored, local tooling only) instead of being reconstructed from HANDOFF prose each time. Run from `.patch-tools/` after any userscript change, before `frida-compile`.

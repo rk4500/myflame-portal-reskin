@@ -661,9 +661,13 @@ body.flame-reskin-off #flame-reskin-toggle {
   .fr-datestrip-daynum { font-size: 0.9375rem; }
   .fr-daynav-btn { width: 28px; height: 28px; }
   /* .fr-row's justify-content:space-between shoves fr-row-main to the far
-     right edge on rows with only 2 children (time + main) — reads fine on
-     a wide desktop row but leaves an ugly gap on mobile's narrower rows. */
-  .fr-row { justify-content: flex-start; }
+     right edge on class-schedule rows (only 2 children: time + main) —
+     reads fine on a wide desktop row but leaves an ugly gap on mobile's
+     narrower rows. Scoped to rows with a .fr-row-time child specifically
+     (only class-schedule rows have one) so booking rows — which rely on
+     space-between to push their status pill/cancel button to the right —
+     are untouched. */
+  .fr-row:has(.fr-row-time) { justify-content: flex-start; }
   /* Day/week toggle moves up next to the title; the day-nav/date-strip
      gets its own full-width row below (same grid, different areas). */
   .fr-cal-header { grid-template-areas: "title toggle" "nav nav"; }
