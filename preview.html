@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>FLAME Portal Reskin — preview</title>
+<style>
+  html,body{margin:0;background:#000;}
+  /* QA-harness only: the CLI screenshot tool's virtual clock can catch
+     the shipped fr-page entrance animation mid-frame, producing a
+     falsely "dimmed" capture. Disable it here so screenshots are
+     deterministic; the real animation is untouched in portal-reskin.user.js. */
+  #flame-reskin-root .fr-page { animation: none !important; opacity: 1 !important; transform: none !important; }
+</style>
+</head>
+<body>
+<!-- Stand-in for the stock Siteforce chrome the real script hides. -->
+<div style="padding:40px;font:16px sans-serif;color:#fff;">
+  ORIGINAL PORTAL CONTENT (should be hidden once the reskin boots)
+</div>
+<script>
+  // Set before portal-reskin.user.js runs so it boots straight into this
+  // tab — a single switchTab() call, not two racing ones.
+  window.__FLAME_RESKIN_INITIAL_TAB__ = new URLSearchParams(location.search).get('tab') || 'home';
+</script>
+
+<script>
+  // Dev/preview stub consumed by callAura()'s preview short-circuit in
+  // portal-reskin.user.js. Data below is real captured shapes (see
+  // aura_map.json) for schedule/bookings/resources; the two nearest-future
+  // "Upcoming" bookings are synthesized (the real capture had none in the
+  // future relative to its capture date) — marked here, not in the UI.
+  window.__FLAME_RESKIN_PREVIEW__ = {
+    'AiAssistantFlameCommunityWrapper.getAssistantContext': {
+      threadContext: 'Rudra Krishna (Roll Number: 240578) from Undergraduate Program (UGLE) 2024 is starting the conversation. The Salesforce user record Id is 0055i00000CwfKqAAJ.'
+    },
+    'StudentPortalCalendarCtrl.getAllScheduledEvents': [{"courseName": "Applied Formal Methods", "endDateTime": "2026-09-02T15:10:00", "faculty": "Aamod Sane", "facultySalutation": "Dr.", "id": "a8Hfv000000AETdEAO", "room": "Aryabhatta 004", "sessionTime": "14:15 - 15:10", "startDateTime": "2026-09-02T14:15:00", "title": "CSIT305_UGSEM5"}, {"courseName": "Entrepreneurial Failure and Sustenance", "endDateTime": "2026-09-02T12:55:00", "faculty": "Krishna Chaitanya", "facultySalutation": "Prof.", "id": "a8Hfv000000AD5vEAG", "room": "Aryabhatta 001", "sessionTime": "12:00 - 12:55", "startDateTime": "2026-09-02T12:00:00", "title": "ENTS308_UGSEM5"}, {"courseName": "Design and Analysis of Algorithms", "endDateTime": "2026-09-01T18:10:00", "faculty": "Lokendra Vishwakarma", "facultySalutation": "Prof.", "id": "a8Hfv000000AERmEAO", "room": "Library Computer Lab", "sessionTime": "17:15 - 18:10", "startDateTime": "2026-09-01T17:15:00", "title": "CSIT301_UGSEM5"}, {"courseName": "Principles of Machine Learning", "endDateTime": "2026-09-01T16:10:00", "faculty": "Manoranjan Dash", "facultySalutation": "Prof.", "id": "a8Hfv000000AEWcEAO", "room": "Aryabhatta 202", "sessionTime": "15:15 - 16:10", "startDateTime": "2026-09-01T15:15:00", "title": "CSIT332_UGSEM5"}, {"courseName": "Design and Analysis of Algorithms", "endDateTime": "2026-09-03T18:10:00", "faculty": "Lokendra Vishwakarma", "facultySalutation": "Prof.", "id": "a8Hfv000000AESHEA4", "room": "Library Computer Lab", "sessionTime": "17:15 - 18:10", "startDateTime": "2026-09-03T17:15:00", "title": "CSIT301_UGSEM5"}, {"courseName": "Business Plan Development and Entrepreneurial Finance", "endDateTime": "2026-08-31T12:55:00", "faculty": "Bharat Damani", "facultySalutation": "Dr.", "id": "a8Hfv000000AD43EAG", "room": "Aryabhatta 103", "sessionTime": "12:00 - 12:55", "startDateTime": "2026-08-31T12:00:00", "title": "ENTS307_UGSEM5"}, {"courseName": "Principles of Machine Learning", "endDateTime": "2026-09-03T15:10:00", "faculty": "Manoranjan Dash", "facultySalutation": "Prof.", "id": "a8Hfv000000AEWrEAO", "room": "Aryabhatta 202", "sessionTime": "14:15 - 15:10", "startDateTime": "2026-09-03T14:15:00", "title": "CSIT332_UGSEM5"}, {"courseName": "Applied Formal Methods", "endDateTime": "2026-08-31T16:10:00", "faculty": "Aamod Sane", "facultySalutation": "Dr.", "id": "a8Hfv000000AETOEA4", "room": "Aryabhatta 004", "sessionTime": "15:15 - 16:10", "startDateTime": "2026-08-31T15:15:00", "title": "CSIT305_UGSEM5"}, {"courseName": "Entrepreneurial Failure and Sustenance", "endDateTime": "2026-09-02T11:55:00", "faculty": "Krishna Chaitanya", "facultySalutation": "Prof.", "id": "a8Hfv000000AD5fEAG", "room": "Aryabhatta 001", "sessionTime": "11:00 - 11:55", "startDateTime": "2026-09-02T11:00:00", "title": "ENTS308_UGSEM5"}, {"courseName": "Principles of Operating Systems", "endDateTime": "2026-08-29T10:55:00", "faculty": "Abhijit Limaye", "facultySalutation": "Prof.", "id": "a8Hfv000000ADMGEA4", "room": "APJ Abdul Kalam 004", "sessionTime": "10:00 - 10:55", "startDateTime": "2026-08-29T10:00:00", "title": "CSIT203_UGSEM5"}, {"courseName": "Principles of Operating Systems", "endDateTime": "2026-09-04T15:10:00", "faculty": "Abhijit Limaye", "facultySalutation": "Prof.", "id": "a8Hfv000000ADLnEAO", "room": "Aryabhatta 002", "sessionTime": "14:15 - 15:10", "startDateTime": "2026-09-04T14:15:00", "title": "CSIT203_UGSEM5"}, {"courseName": "Applied Formal Methods", "endDateTime": "2026-09-02T16:10:00", "faculty": "Aamod Sane", "facultySalutation": "Dr.", "id": "a8Hfv000000AETtEAO", "room": "Aryabhatta 004", "sessionTime": "15:15 - 16:10", "startDateTime": "2026-09-02T15:15:00", "title": "CSIT305_UGSEM5"}, {"courseName": "Design and Analysis of Algorithms", "endDateTime": "2026-09-01T17:10:00", "faculty": "Lokendra Vishwakarma", "facultySalutation": "Prof.", "id": "a8Hfv000000AERXEA4", "room": "Library Computer Lab", "sessionTime": "16:15 - 17:10", "startDateTime": "2026-09-01T16:15:00", "title": "CSIT301_UGSEM5"}, {"courseName": "Entrepreneurial Failure and Sustenance", "endDateTime": "2026-09-04T12:55:00", "faculty": "Krishna Chaitanya", "facultySalutation": "Prof.", "id": "a8Hfv000000AD6BEAW", "room": "Aryabhatta 001", "sessionTime": "12:00 - 12:55", "startDateTime": "2026-09-04T12:00:00", "title": "ENTS308_UGSEM5"}, {"courseName": "Principles of Operating Systems", "endDateTime": "2026-08-29T11:55:00", "faculty": "Abhijit Limaye", "facultySalutation": "Prof.", "id": "a8Hfv000000ADMVEA4", "room": "APJ Abdul Kalam 004", "sessionTime": "11:00 - 11:55", "startDateTime": "2026-08-29T11:00:00", "title": "CSIT203_UGSEM5"}, {"courseName": "Design and Analysis of Algorithms", "endDateTime": "2026-09-03T17:10:00", "faculty": "Lokendra Vishwakarma", "facultySalutation": "Prof.", "id": "a8Hfv000000AES1EAO", "room": "Library Computer Lab", "sessionTime": "16:15 - 17:10", "startDateTime": "2026-09-03T16:15:00", "title": "CSIT301_UGSEM5"}, {"courseName": "Business Plan Development and Entrepreneurial Finance", "endDateTime": "2026-08-31T13:55:00", "faculty": "Bharat Damani", "facultySalutation": "Dr.", "id": "a8Hfv000000AD4IEAW", "room": "Aryabhatta 103", "sessionTime": "13:00 - 13:55", "startDateTime": "2026-08-31T13:00:00", "title": "ENTS307_UGSEM5"}, {"courseName": "Principles of Machine Learning", "endDateTime": "2026-09-01T15:10:00", "faculty": "Manoranjan Dash", "facultySalutation": "Prof.", "id": "a8Hfv000000AEWNEA4", "room": "Aryabhatta 202", "sessionTime": "14:15 - 15:10", "startDateTime": "2026-09-01T14:15:00", "title": "CSIT332_UGSEM5"}, {"courseName": "Principles of Operating Systems", "endDateTime": "2026-09-04T16:10:00", "faculty": "Abhijit Limaye", "facultySalutation": "Prof.", "id": "a8Hfv000000ADM2EAO", "room": "Aryabhatta 002", "sessionTime": "15:15 - 16:10", "startDateTime": "2026-09-04T15:15:00", "title": "CSIT203_UGSEM5"}, {"courseName": "Applied Formal Methods", "endDateTime": "2026-08-31T15:10:00", "faculty": "Aamod Sane", "facultySalutation": "Dr.", "id": "a8Hfv000000AET9EAO", "room": "Aryabhatta 004", "sessionTime": "14:15 - 15:10", "startDateTime": "2026-08-31T14:15:00", "title": "CSIT305_UGSEM5"}, {"courseName": "Business Plan Development and Entrepreneurial Finance", "endDateTime": "2026-09-03T12:55:00", "faculty": "Bharat Damani", "facultySalutation": "Dr.", "id": "a8Hfv000000AD4XEAW", "room": "Aryabhatta 103", "sessionTime": "12:00 - 12:55", "startDateTime": "2026-09-03T12:00:00", "title": "ENTS307_UGSEM5"}, {"courseName": "Principles of Operating Systems", "endDateTime": "2026-09-05T11:55:00", "faculty": "Abhijit Limaye", "facultySalutation": "Prof.", "id": "a8Hfv000000ADMWEA4", "room": "APJ Abdul Kalam 004", "sessionTime": "11:00 - 11:55", "startDateTime": "2026-09-05T11:00:00", "title": "CSIT203_UGSEM5"}, {"courseName": "Principles of Machine Learning", "endDateTime": "2026-09-03T16:10:00", "faculty": "Manoranjan Dash", "facultySalutation": "Prof.", "id": "a8Hfv000000AEX7EAO", "room": "Aryabhatta 202", "sessionTime": "15:15 - 16:10", "startDateTime": "2026-09-03T15:15:00", "title": "CSIT332_UGSEM5"}, {"courseName": "Principles of Operating Systems", "endDateTime": "2026-09-05T10:55:00", "faculty": "Abhijit Limaye", "facultySalutation": "Prof.", "id": "a8Hfv000000ADMHEA4", "room": "APJ Abdul Kalam 004", "sessionTime": "10:00 - 10:55", "startDateTime": "2026-09-05T10:00:00", "title": "CSIT203_UGSEM5"}],
+    'CustomBookingController.getReservations': [{"bookingId": "R-720001", "resourceName": "Chandragupta - Focus Room 201 W", "startDate": "2026-09-03", "startDateTime": "03/09/2026, 4:00 PM", "endDate": "2026-09-03", "endDateTime": "03/09/2026, 5:00 PM", "status": "Booked"}, {"bookingId": "R-720014", "resourceName": "Gym ( 6:00 am to 2:00 pm slot )", "startDate": "2026-09-05", "startDateTime": "05/09/2026, 7:00 AM", "endDate": "2026-09-05", "endDateTime": "05/09/2026, 8:00 AM", "status": "Booked"}, {"bookingId": "R-714794", "endDate": "2026-09-01", "endDateTime": "01/09/2026, 7:00 AM", "resourceName": "Gym ( 6:00 am to 2:00 pm slot )", "startDate": "2026-09-01", "startDateTime": "01/09/2026, 6:00 AM", "status": "Canceled"}, {"bookingId": "R-713759", "endDate": "2026-08-31", "endDateTime": "31/08/2026, 9:00 AM", "resourceName": "Gym ( 6:00 am to 2:00 pm slot )", "startDate": "2026-08-31", "startDateTime": "31/08/2026, 8:00 AM", "status": "Booked"}, {"bookingId": "R-712153", "endDate": "2026-08-29", "endDateTime": "29/08/2026, 9:00 AM", "resourceName": "Gym ( 6:00 am to 2:00 pm slot )", "startDate": "2026-08-29", "startDateTime": "29/08/2026, 8:00 AM", "status": "Booked"}, {"bookingId": "R-709741", "endDate": "2026-08-26", "endDateTime": "26/08/2026, 8:00 AM", "resourceName": "Gym ( 6:00 am to 2:00 pm slot )", "startDate": "2026-08-26", "startDateTime": "26/08/2026, 7:00 AM", "status": "Booked"}],
+    'CustomBookingController.getResources': JSON.stringify([{"resources": [{"resourceId": "a230K00000945JHQAY", "name": "Gym ( 6:00 am to 2:00 pm slot )"}, {"resourceId": "a230K00000945K5QAI", "name": "Swimming Pool"}, {"resourceId": "a235i000000nYV0AAM", "name": "Gym ( 3:00 pm to 11:00 pm slot )"}], "facility_Name": "Sports Facilities"}, {"resources": [{"resourceId": "a230K00000945IiQAI", "name": "Library - Discussion Room A"}, {"resourceId": "a230K00000945KFQAY", "name": "Library - Discussion Room C"}, {"resourceId": "a230K00000945KKQAY", "name": "Library - Discussion Room B"}, {"resourceId": "a230K00000945LrQAI", "name": "Chandragupta - Focus Room 201 W"}, {"resourceId": "a230K00000945LwQAI", "name": "Chandragupta - Focus Room 301 W"}, {"resourceId": "a235i000000tGUuAAM", "name": "Chandragupta - Amphitheatre"}], "facility_Name": "Conference Rooms"}, {"resources": [{"resourceId": "a230K00000945MQQAY", "name": "Aryabhata - ARB001"}, {"resourceId": "a230K00000945MVQAY", "name": "Aryabhata - ARB004"}, {"resourceId": "a235i000000tG5kAAE", "name": "Aryabhata - ARB002"}, {"resourceId": "a235i000000tG5pAAE", "name": "Aryabhata - ARB101"}, {"resourceId": "a235i000000tG5uAAE", "name": "Aryabhata - ARB102"}, {"resourceId": "a235i000000tG5zAAE", "name": "Aryabhata - ARB103"}, {"resourceId": "a235i000000tG64AAE", "name": "Aryabhata - ARB104"}, {"resourceId": "a235i000000tG69AAE", "name": "Aryabhata - ARB201"}, {"resourceId": "a235i000000tG6EAAU", "name": "Aryabhata - ARB202"}, {"resourceId": "a235i000000tG6JAAU", "name": "Aryabhata - ARB203"}, {"resourceId": "a235i000000tG6OAAU", "name": "Aryabhata - ARB204"}, {"resourceId": "a23fv000001syHxAAI", "name": "Digital Learning Lab - Studio 102"}, {"resourceId": "a23fv000001t0q1AAA", "name": "Digital Learning Lab - Studio 103"}], "facility_Name": "Class Rooms"}]),
+    'CustomBookingController.getResourceAvailability': function (params) {
+      // Simple deterministic fake generator so the Book Slot flow is
+      // interactively testable too, not just screenshot-static.
+      if (params.bookingDate < '2026-09-01') return 'Booking date cannot be in the past.';
+      const slots = [
+        { startTime: '6:00 AM', endTime: '7:00 AM', availableDate: null, availableCapacity: 2 },
+        { startTime: '7:00 AM', endTime: '8:00 AM', availableDate: null, availableCapacity: 0 },
+        { startTime: '1:00 PM', endTime: '2:00 PM', availableDate: null, availableCapacity: 7 },
+      ];
+      return JSON.stringify({ resourceId: params.resourceId, availabilitySlots: slots });
+    },
+    'CustomBookingController.createReservation': function (params) {
+      return `Booking request submitted successfully with Booking Id R-999001. Check your email for updates. Thank you.`;
+    },
+    'CustomBookingController.cancelReservation': function (params) {
+      return `Booking with ${params.bookingId} has been cancelled successfully.`;
+    },
+  };
+</script>
+<script src="portal-reskin.user.js"></script>
+<script>
+  // QA-harness only: scripted click-throughs for states that need real
+  // interaction (slot selection, confirm panel, cancel confirm), driven by
+  // ?auto=<scenario> since the screenshot CLI tool can't click anything itself.
+  window.addEventListener('load', async () => {
+    const auto = new URLSearchParams(location.search).get('auto');
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    if (auto === 'book-confirm') {
+      await wait(400); // availability now auto-loads, just wait for it then pick a slot
+      document.querySelector('.fr-slot:not(:disabled)').click();
+    }
+    if (auto === 'week') {
+      await wait(200);
+      [...document.querySelectorAll('.fr-view-toggle button')].find((b) => b.textContent === 'Week').click();
+    }
+    if (auto === 'week-scrolled') {
+      await wait(200);
+      [...document.querySelectorAll('.fr-view-toggle button')].find((b) => b.textContent === 'Week').click();
+      await wait(200);
+      document.querySelector('.fr-content').scrollTop = 999;
+    }
+    if (auto === 'pick-thu') {
+      await wait(300);
+      [...document.querySelectorAll('.fr-datestrip-cell')]
+        .find((c) => c.querySelector('.fr-datestrip-daynum')?.textContent === '3')
+        .click();
+    }
+    if (auto === 'toggle-off') {
+      await wait(200);
+      document.getElementById('flame-reskin-toggle').click();
+    }
+    if (auto === 'cancel-confirm') {
+      await wait(400);
+      document.querySelector('.fr-cancel-wrap .fr-btn--ghost').click(); // Cancel -> asks
+    }
+  });
+</script>
+</body>
+</html>

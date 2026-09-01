@@ -1,0 +1,16 @@
+# HAR captures contain live session cookies/tokens and are huge — never commit
+*.har
+
+# Built APKs — large binaries, regenerable from portal-reskin.user.js via
+# the pipeline documented in HANDOFF.md
+*.apk
+
+# Android patch toolchain: venv, downloaded build-tools/APKEditor, generated
+# hook.compiled.js, pulled/patched APKs, phone screenshots — all local/regenerable
+.patch-tools/
+
+# QA screenshots from preview.html — regenerable, not source
+.review/
+
+# machine-local Claude Code settings
+.claude/settings.local.json
