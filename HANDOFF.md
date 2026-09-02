@@ -429,3 +429,57 @@ User report, all mobile, all the same underlying failure — a row/tile whose te
 `preview.html`'s availability stub was serving three friendly slots (6 AM, 7 AM, 1 PM) — replaced with the real captured full 6 AM–2 PM gym window from `aura_map.json`, so two-digit hours and the noon crossing are always on screen. Its screenshot-determinism rule now also freezes the confirming row's colour transition (the virtual clock was catching it mid-flight and screenshotting a half-tinted row, which looked like a real bug). **New `?auto=measure` and `?auto=cancel-measure` modes** dump every `.fr-row`/`.fr-slot`/`.fr-datestrip-cell`'s measured height into a `<pre id="measure">` for `chromium --dump-dom` to read — "are these boxes actually the same height" is a question to answer with numbers, not by eyeballing a PNG. That is how the 80px-vs-70px drawer bug above was caught after it had already passed a visual review. Verified with `chromium --headless=new` at 390×844, 360×800 and 1280×900: home classes, My Bookings (idle + confirming), Book Slot grid, and the booking confirm panel — every box in a list is now the same height, and the confirm panel causes no movement at all.
 
 **Not committed** (no-auto-commit rule). **Not rebuilt into the APK** — `portal-reskin.user.js` changed, so a new APK needs the `SCRIPT` regeneration + `frida-compile` → `objection patchapk` sequence documented above before the phone sees any of this.
+
+## Rail tried and rejected; release cut; Actions investigated (2026-09-03)
+
+**Released `v2026.09.03`** — APK rebuilt from `099875a`, uploaded as a GitHub release asset. Build was verified rather than assumed: the embedded `lib/arm64-v8a/libfrida-gadget.script.so` is byte-identical to `hook.compiled.js`, and the rebuild log has no `OutOfMemoryError` (the two "may have failed" lines objection prints are its standard boilerplate — check for the OOM string, not for those). Still not tested on-device; no phone connected.
+
+**Rail: built, rejected, kept.** Branch `rail` (`aaa8948`, local only, never pushed) replaces the filled `.fr-row` card with a hairline `.fr-rail` list across Home and My Bookings, and unfills slot tiles and date-strip cells to match. User rejected it on sight ("i don't like this rail thing at all"). Branch is deliberately **not deleted** — don't remove it without asking. `master` has no rail code.
+
+### Still open: long class titles truncate on Home
+
+Master's Home rows ellipsise a long course name. These are the measured facts (reskin's own font, its own sizes), worth not re-deriving:
+
+| Course | one line | lines @234px (today) | lines @322px (full width) | px to fit one line @234 |
+|---|---|---|---|---|
+| Applied Formal Methods | 187px | 1 | 1 | 20.1px |
+| Principles of Machine Learning | 237px | 2 | 1 | 15.8px |
+| Design and Analysis of Algorithms | 264px | 2 | 1 | 14.2px |
+| Entrepreneurial Failure and Sustenance | 302px | 2 | 1 | 12.4px |
+| Business Plan Development and Entrepreneurial Finance | 435px | 2 | 2 | **8.6px** |
+
+- **Shrink-to-fit is ruled out** — the longest real course name needs 8.6px, half the size of the row above it, and unreadable on a phone. Asked and answered; don't revisit.
+- The left time column costs 88px (78px min-width + gap) and is the whole problem: at full width, 5 of 6 real course names fit on one line, and all 4 real `room · faculty` strings fit (3 of 4 don't at 234px).
+- Remaining candidates: **(A)** clamp the title to two lines with the height reserved, so rows stay equal — still truncates faculty; **(B)** move the time to a small line above the title so the text gets full width, reserving two title lines to keep cards equal.
+
+### UI references the user wanted to look through
+
+Named while discussing a broader overhaul; the user is deciding for themselves. What each is worth stealing:
+
+- **Things 3** — the strongest case that deleting boxes makes a list *prettier*. Type and whitespace only, one blue accent, nothing else.
+- **Structured** (iOS day planner) — a time rail done well; colour-coded dots carry category without carrying decoration.
+- **Cron / Notion Calendar** — dark, hairline, restrained; proof a dark schedule UI can feel expensive with almost no colour.
+- **Linear** — low-chroma dark, 1px borders instead of filled surfaces, obsessive consistency. The reference for "expensive without decoration".
+- **Amie** — the counter-argument: big type, playful colour, still simple. Look here if the app should feel less severe.
+- **Fantastical** — dense day lists that stay legible; strong time-column typography.
+- **Citymapper** — vertical time rail with connectors, if a day should read as a journey.
+
+A comparison board rendering Rail / Timeline / Quiet-slab against the real schedule was published as an artifact during that discussion. Note the finding it produced: a **timeline whose block height maps to duration is wasted on Home**, because every FLAME class is 55 minutes — block height would encode only the gaps between classes. Worth stealing for the Calendar tab, not for Home.
+
+### Can the APK build run in GitHub Actions? Yes, with two prerequisites
+
+Investigated, not built.
+
+- **Signing is not the problem, contrary to first assumption.** `objection.jks` ships *inside the objection package* (`site-packages/objection/utils/assets/objection.jks`), so it is identical on every install of a given version. Pin `objection==1.12.5` and CI emits an APK signed `CN=Unknown, OU=objection, O=SensePost` — the same cert as local builds, so `adb install -r` still upgrades in place and preserves the logged-in session. Verify with `apksigner verify --print-certs`; SHA-256 of the current signer is `f7697c66…f46ce0fb`.
+- **Prerequisite 1 — the base APK.** `flame-merged.apk` (33MB, the stock app merged from its 4 splits) can't be committed sensibly: binaries don't delta-compress, so every re-pull of the stock app adds another permanent 33MB to every clone. Put it in a private release asset and have CI `gh release download` it.
+- **Prerequisite 2 — the toolchain sources aren't tracked.** `.patch-tools/` is ignored wholesale, but it is 1023MB across 32,736 files of which only ~120KB is source (`hook.js`, `gadget-config.json`, `regen-hook-script.py`, `probe.js`). Invert the ignore:
+  ```gitignore
+  .patch-tools/*
+  !.patch-tools/hook.src.js
+  !.patch-tools/gadget-config.json
+  !.patch-tools/regen-hook-script.py
+  !.patch-tools/probe.js
+  ```
+  Don't track `hook.js` as-is: 116KB of its 118KB is the pasted copy of `portal-reskin.user.js`, so every userscript edit would produce a second near-identical diff of the whole file in the same commit. Split it into `hook.src.js` (~2KB of real Frida logic with a placeholder constant) and let `regen-hook-script.py` fuse the two at build time.
+- Everything else is free: ubuntu-latest ships the JDK and Android SDK, 16GB of RAM covers `-Xmx6g`, objection fetches the gadget itself, and the local patch takes under two minutes. Trigger on `v*` tags and the release upload becomes automatic.
+- Keep the phone screenshots in `.patch-tools/*.png` ignored regardless — they show the portal with a real name and roll number on screen.
