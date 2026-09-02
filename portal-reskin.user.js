@@ -1719,10 +1719,41 @@ body.flame-reskin-off #flame-reskin-toggle {
 
   const bookState = { facilities: null, categoryIdx: 0, resourceId: null, date: startOfToday() };
 
+  // getResources returns each facility's rooms in whatever order the query
+  // produced — ARB001, ARB004, ARB002, ARB101 — which reads as no order at
+  // all in the picker. Sorted once here, at the point the data lands, so the
+  // picker, the default selection and anything else reading bookState all
+  // agree.
+  //
+  // Numeric collation is what makes ARB002 come before ARB101 (a plain
+  // string sort puts "101" before "2"), and it puts Discussion Room A/B/C in
+  // sequence. The one case it gets wrong on its own is a name carrying an
+  // operating window — "Gym ( 3:00 pm to 11:00 pm slot )" would sort before
+  // "Gym ( 6:00 am to 2:00 pm slot )" on the bare digit 3 — so a window is
+  // split off and compared as a real time, listing the morning gym first.
+  const RESOURCE_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  const RESOURCE_WINDOW_RE = /^(.*?)\s*\(\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i;
+
+  function splitResourceWindow(name) {
+    const m = RESOURCE_WINDOW_RE.exec(name || '');
+    if (!m) return { label: (name || '').trim(), startMinutes: 0 };
+    const hour12 = Number(m[2]) % 12;
+    const hour = m[4].toLowerCase() === 'p' ? hour12 + 12 : hour12;
+    return { label: m[1].trim(), startMinutes: hour * 60 + Number(m[3] || 0) };
+  }
+
+  function sortResources(resources) {
+    return resources.slice().sort((a, b) => {
+      const left = splitResourceWindow(a.name);
+      const right = splitResourceWindow(b.name);
+      return RESOURCE_COLLATOR.compare(left.label, right.label) || left.startMinutes - right.startMinutes;
+    });
+  }
+
   async function renderBookSlot(token) {
     if (!bookState.facilities) {
       const raw = await callAura('CustomBookingController', 'getResources', null, true);
-      bookState.facilities = JSON.parse(raw);
+      bookState.facilities = JSON.parse(raw).map((f) => ({ ...f, resources: sortResources(f.resources || []) }));
     }
     const facilities = bookState.facilities;
     if (token !== activeToken) return;

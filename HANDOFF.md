@@ -483,3 +483,13 @@ Investigated, not built.
   Don't track `hook.js` as-is: 116KB of its 118KB is the pasted copy of `portal-reskin.user.js`, so every userscript edit would produce a second near-identical diff of the whole file in the same commit. Split it into `hook.src.js` (~2KB of real Frida logic with a placeholder constant) and let `regen-hook-script.py` fuse the two at build time.
 - Everything else is free: ubuntu-latest ships the JDK and Android SDK, 16GB of RAM covers `-Xmx6g`, objection fetches the gadget itself, and the local patch takes under two minutes. Trigger on `v*` tags and the release upload becomes automatic.
 - Keep the phone screenshots in `.patch-tools/*.png` ignored regardless — they show the portal with a real name and roll number on screen.
+
+## Booking resource lists are sorted (2026-09-03)
+
+`getResources` returns each facility's rooms in query order — `ARB001, ARB004, ARB002, ARB101, …` — which reads as no order at all in the picker. Sorted once in `renderBookSlot`, at the point the response lands, so the picker, the default selection (`resources[0]`) and anything else reading `bookState.facilities` all agree.
+
+Two details that a plain `.sort()` gets wrong:
+- **Numeric collation** (`Intl.Collator(undefined, { numeric: true })`) is what puts `ARB002` before `ARB101`; a string sort puts `"101"` before `"2"`. It also sequences Discussion Room A/B/C.
+- **Operating windows are compared as times.** `Gym ( 3:00 pm to 11:00 pm slot )` would otherwise sort before `Gym ( 6:00 am to 2:00 pm slot )` on the bare digit 3. `splitResourceWindow()` peels the parenthetical off and compares real minutes, so the morning gym lists first — which matters, since that is the one booked daily.
+
+Verified against the real captured resource lists for all three facilities, and in the harness DOM.
