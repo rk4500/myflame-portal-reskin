@@ -10,6 +10,10 @@
      falsely "dimmed" capture. Disable it here so screenshots are
      deterministic; the real animation is untouched in portal-reskin.user.js. */
   #flame-reskin-root .fr-page { animation: none !important; opacity: 1 !important; transform: none !important; }
+  /* Same reason: the confirming row's background/colour transition would
+     otherwise be caught mid-flight and screenshot half-tinted. */
+  #flame-reskin-root .fr-row,
+  #flame-reskin-root .fr-row-title { transition: none !important; }
 </style>
 </head>
 <body>
@@ -104,9 +108,17 @@
       // Simple deterministic fake generator so the Book Slot flow is
       // interactively testable too, not just screenshot-static.
       if (params.bookingDate < '2026-09-01') return 'Booking date cannot be in the past.';
+      // Real shape from aura_map.json's getResourceAvailability capture —
+      // a whole 6 AM-2 PM gym window, so two-digit hours and the noon
+      // crossing are always on screen for layout QA.
       const slots = [
         { startTime: '6:00 AM', endTime: '7:00 AM', availableDate: null, availableCapacity: 2 },
         { startTime: '7:00 AM', endTime: '8:00 AM', availableDate: null, availableCapacity: 0 },
+        { startTime: '8:00 AM', endTime: '9:00 AM', availableDate: null, availableCapacity: 8 },
+        { startTime: '9:00 AM', endTime: '10:00 AM', availableDate: null, availableCapacity: 15 },
+        { startTime: '10:00 AM', endTime: '11:00 AM', availableDate: null, availableCapacity: 8 },
+        { startTime: '11:00 AM', endTime: '12:00 PM', availableDate: null, availableCapacity: 21 },
+        { startTime: '12:00 PM', endTime: '1:00 PM', availableDate: null, availableCapacity: 5 },
         { startTime: '1:00 PM', endTime: '2:00 PM', availableDate: null, availableCapacity: 7 },
       ];
       return JSON.stringify({ resourceId: params.resourceId, availabilitySlots: slots });
@@ -249,9 +261,40 @@
       homeBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       await wait(700);
     }
-    if (auto === 'cancel-confirm') {
+    if (auto === 'measure') {
+      // Layout QA, not a visual state: dumps every row/tile's measured
+      // height into #measure so `chromium --dump-dom` can assert that boxes
+      // in one list are actually identical, instead of eyeballing a PNG.
+      await wait(500);
+      const out = [];
+      for (const sel of ['.fr-row', '.fr-slot', '.fr-datestrip-cell']) {
+        document.querySelectorAll(sel).forEach((n, i) => {
+          const label = (n.querySelector('.fr-row-title, .fr-slot-time') || n).textContent.trim().slice(0, 34);
+          out.push(`${sel}[${i}] ${Math.round(n.getBoundingClientRect().height)}px  ${label}`);
+        });
+      }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'cancel-confirm' || auto === 'cancel-measure') {
       await wait(400);
       document.querySelector('.fr-cancel-wrap .fr-btn--ghost').click(); // Cancel -> asks
+    }
+    if (auto === 'cancel-measure') {
+      // Same dump as ?auto=measure, but with one row's confirmation open —
+      // the case where a row is most likely to grow taller than its peers.
+      await wait(300);
+      const out = [];
+      document.querySelectorAll('.fr-row').forEach((n, i) => {
+        const label = (n.querySelector('.fr-row-title') || n).textContent.trim().slice(0, 34);
+        out.push(`.fr-row[${i}] ${Math.round(n.getBoundingClientRect().height)}px  ${label}`);
+      });
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
     }
   });
 </script>

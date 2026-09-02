@@ -369,17 +369,45 @@
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   background: var(--bg-elevated); border-radius: 12px; padding: 14px 16px;
 }
-.fr-row-main { min-width: 0; }
-.fr-row-title { margin: 0; font-weight: 600; }
-.fr-row-meta { margin: 4px 0 0; font-size: 0.8125rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.fr-row-time { font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 78px; }
+/* Every row in a list has to be the same height. A long class title, or a
+   "Wednesday, Sep 10 - 10:00 AM - 11:00 AM" meta line, used to wrap onto a
+   second line and grow its own box, which reads as "this class runs
+   longer" when it only means "this name is longer". Both lines are single
+   line + ellipsis now, and .fr-row-main shrinks (min-width:0) rather than
+   shoving the pill/button off the edge. */
+.fr-row-main { flex: 1; min-width: 0; }
+.fr-row-title { margin: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-row-meta {
+  margin: 4px 0 0; font-size: 0.8125rem; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* A class row with no room/faculty still has to reserve the meta line's
+   height, or it sits shorter than its neighbours. */
+.fr-row-meta:empty::before { content: '\\00a0'; } /* escaped twice: STYLE_CSS is a template literal, and a bare \0 + digit is an illegal octal escape there */
+.fr-row-time { font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 78px; white-space: nowrap; }
+/* Status pill + cancel button share one right-hand column, so mobile can
+   collapse them together. */
+.fr-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 .fr-badge { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
 .fr-badge.is-booked { background: var(--success-bg); color: var(--success); }
 .fr-badge.is-cancelled { background: var(--bg-elevated-2); color: var(--text-secondary); }
 
 .fr-cancel-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.fr-confirm-text { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
+
+/* Cancel confirmation. Three earlier attempts all failed the same way —
+   they added something to the row (a question string, an overlay, a drawer)
+   and then had to find room for it. This one adds nothing: the row's own
+   title becomes the question ("Gym" -> "Cancel Gym?"), so the object being
+   cancelled is named exactly once, in the place already reading as its
+   name, and the only new pixels are one extra button. Nothing expands,
+   nothing is covered, every row in the list keeps the same height. */
+.fr-row.is-confirming {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
+}
+.fr-row.is-confirming .fr-row-title { color: var(--danger); }
+.fr-row, .fr-row-title { transition: background-color 140ms ease, color 140ms ease; }
 
 .fr-btn {
   font: inherit; font-weight: 600; border-radius: 9px; padding: 9px 16px;
@@ -580,7 +608,7 @@
 .fr-slot:hover:not(:disabled) { border-color: var(--text-secondary); }
 .fr-slot.is-selected { border-color: var(--accent); background: var(--bg-elevated-2); }
 .fr-slot:disabled { opacity: 0.4; cursor: not-allowed; }
-.fr-slot-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.fr-slot-time { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; }
 .fr-slot-cap { font-size: 0.75rem; color: var(--text-secondary); }
 
 .fr-confirm-panel {
@@ -671,7 +699,22 @@ body.flame-reskin-off #flame-reskin-toggle {
   /* Day/week toggle moves up next to the title; the day-nav/date-strip
      gets its own full-width row below (same grid, different areas). */
   .fr-cal-header { grid-template-areas: "title toggle" "nav nav"; }
-  .fr-slot-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  /* Wider floor than the old 130px: "11 AM - 12 PM" has to fit on one
+     line, or the trailing meridiem wraps and that one tile grows taller
+     than the rest of the grid. Two columns still fit a 360px viewport. */
+  .fr-slot-grid { grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); }
+  .fr-slot { padding: 11px 12px; }
+  .fr-slot-time { font-size: 0.9375rem; }
+  .fr-row { gap: 10px; padding: 12px 14px; }
+  /* A narrow row can't afford both a status pill and a Cancel button, and
+     doesn't need both: the button only ever renders on a booked
+     reservation, so the pill next to it is restating the obvious. Dropping
+     it buys the title/time line ~70px, which is the difference between
+     "Tomorrow - 9 AM - 10 AM" fitting on one line and wrapping. */
+  .fr-row-actions:has(.fr-cancel-wrap) .fr-badge { display: none; }
+  /* Both answers stay short enough that the row's time line survives at
+     360px; see attachCancelConfirm for why the safe one sits on the right. */
+  .fr-cancel-wrap { gap: 6px; }
   /* Week view: .fr-cal-scroll (always overflow-x:auto) lets the grid
      scroll horizontally at a readable column width instead of squeezing 7
      days into the viewport — the JS gives .fr-cal-days a min-width in
@@ -843,6 +886,38 @@ body.flame-reskin-off #flame-reskin-toggle {
     return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   }
 
+  // dayLabel's long weekday ("Wednesday, Sep 10") is right for a page
+  // heading but too wide for a booking row, where it shares one line with a
+  // time range, a status pill and a button — that overflow is what pushed
+  // the closing AM/PM onto a second line and made the box taller.
+  function shortDayLabel(date) {
+    // Compare date-to-date: a booking carries a time of day, and measuring
+    // that against midnight rounded a 4 PM booking tomorrow to 2 days out
+    // ("Thu, Sep 3") while a 7 AM one the same day landed on "Tomorrow".
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.round((day - startOfToday()) / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  // "9:00 AM" + "10:00 AM" -> "9 AM \u2013 10 AM". Only the on-the-hour ":00"
+  // goes: a slot tile two-up on a 390px screen has ~130px of text width, and
+  // "10:00 AM \u2013 11:00 AM" needs more than that, so its trailing meridiem
+  // wrapped to a second line and made that one tile taller than every other
+  // tile in the grid (same in a booking row, where the range shares a line
+  // with a status pill and a button). Both meridiems always stay — dropping
+  // the leading one when the range didn't cross noon fit even better but read
+  // as too clipped, and made a range's two ends look unlike each other.
+  // A :15/:30 slot keeps its minutes; any format this doesn't recognise is
+  // left alone.
+  const ZERO_MINUTES_RE = /^(\d{1,2}):00(?=[\s\u00a0\u202f]*[AaPp]|$)/;
+  function compactTimeRange(startStr, endStr) {
+    const start = String(startStr).replace(ZERO_MINUTES_RE, '$1');
+    const end = String(endStr).replace(ZERO_MINUTES_RE, '$1');
+    return `${start} \u2013 ${end}`;
+  }
+
   function shortDate(date) {
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
@@ -868,7 +943,7 @@ body.flame-reskin-off #flame-reskin-toggle {
   function formatBookingWhen(booking) {
     const start = parseBookingDateTime(booking.startDateTime);
     const end = parseBookingDateTime(booking.endDateTime);
-    return `${dayLabel(start)} · ${formatTime(start)} – ${formatTime(end)}`;
+    return `${shortDayLabel(start)} · ${compactTimeRange(formatTime(start), formatTime(end))}`;
   }
 
   // resourceName carries the facility's whole operating window as a
@@ -1218,9 +1293,12 @@ body.flame-reskin-off #flame-reskin-toggle {
         const row = el('div', { class: 'fr-row' });
         row.appendChild(el('span', { class: 'fr-row-time', text: formatTime(new Date(ev.startDateTime)) }));
         const main = el('div', { class: 'fr-row-main' });
-        main.appendChild(el('p', { class: 'fr-row-title', text: ev.courseName || ev.title }));
+        const courseTitle = ev.courseName || ev.title;
+        main.appendChild(el('p', { class: 'fr-row-title', text: courseTitle, title: courseTitle }));
         const meta = [ev.room, ev.faculty ? `${ev.facultySalutation || ''} ${ev.faculty}`.trim() : null].filter(Boolean).join(' · ');
-        if (meta) main.appendChild(el('p', { class: 'fr-row-meta', text: meta }));
+        // Appended even when empty: the meta line's height is what keeps
+        // every row in the list the same height (see .fr-row-meta:empty).
+        main.appendChild(el('p', { class: 'fr-row-meta', text: meta, title: meta }));
         row.appendChild(main);
         list.appendChild(row);
       }
@@ -1256,8 +1334,8 @@ body.flame-reskin-off #flame-reskin-toggle {
         list.appendChild(
           el('div', { class: 'fr-row' }, [
             el('div', { class: 'fr-row-main' }, [
-              el('p', { class: 'fr-row-title', text: cleanResourceName(b.resourceName) }),
-              el('p', { class: 'fr-row-meta', text: formatBookingWhen(b) }),
+              el('p', { class: 'fr-row-title', text: cleanResourceName(b.resourceName), title: cleanResourceName(b.resourceName) }),
+              el('p', { class: 'fr-row-meta', text: formatBookingWhen(b), title: formatBookingWhen(b) }),
             ]),
           ])
         );
@@ -1520,49 +1598,119 @@ body.flame-reskin-off #flame-reskin-toggle {
   function renderBookingRow(booking, cancellable) {
     const row = el('div', { class: 'fr-row' });
     const main = el('div', { class: 'fr-row-main' });
-    main.appendChild(el('p', { class: 'fr-row-title', text: cleanResourceName(booking.resourceName) }));
-    main.appendChild(el('p', { class: 'fr-row-meta', text: formatBookingWhen(booking) }));
+    const name = cleanResourceName(booking.resourceName);
+    const when = formatBookingWhen(booking);
+    const title = el('p', { class: 'fr-row-title', text: name, title: name });
+    const meta = el('p', { class: 'fr-row-meta', text: when, title: when });
+    main.append(title, meta);
     row.appendChild(main);
 
+    // Pill and cancel control share one right-hand column so mobile can
+    // treat them as a unit (it drops the pill when a cancel control is
+    // present — see .fr-row-actions:has(.fr-cancel-wrap)).
+    const actions = el('div', { class: 'fr-row-actions' });
     const statusClass = booking.status === 'Booked' ? 'is-booked' : 'is-cancelled';
-    row.appendChild(el('span', { class: `fr-badge ${statusClass}`, text: booking.status }));
+    actions.appendChild(el('span', { class: `fr-badge ${statusClass}`, text: booking.status }));
+    row.appendChild(actions);
 
     if (cancellable && booking.status === 'Booked') {
-      row.appendChild(buildCancelControl(booking));
+      attachCancelConfirm(booking, { row, actions, title, meta, name, when });
     }
     return row;
   }
 
-  function buildCancelControl(booking) {
+  // Confirming a cancel costs the row nothing: its own title turns into the
+  // question ("Gym" -> "Cancel Gym?"), so the booking is named once, where
+  // its name already was, and the only new pixels are a second button. No
+  // expansion, no overlay, no reflow — the row is exactly as tall and as
+  // wide while asking as it is at rest, so every row in the list stays
+  // identical. Earlier passes that added a separate question line, an
+  // overlay, or a drawer are recorded in HANDOFF.md; each one had to buy
+  // room the row did not have.
+  function attachCancelConfirm(booking, parts) {
+    const { row, actions, title, meta, name, when } = parts;
     const wrap = el('div', { class: 'fr-cancel-wrap' });
+    actions.appendChild(wrap);
 
-    function showAsk() {
-      const yesBtn = el('button', { class: 'fr-btn fr-btn--danger fr-btn--sm', type: 'button', text: 'Yes, cancel' });
-      const noBtn = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'No' });
-      yesBtn.addEventListener('click', async () => {
-        yesBtn.disabled = true;
-        yesBtn.textContent = 'Cancelling…';
-        try {
-          const userId = await resolveUserId();
-          await callAura('CustomBookingController', 'cancelReservation', { userId, bookingId: booking.bookingId });
-          bookingsCache = null;
-          await switchTab('bookings');
-        } catch (e) {
-          wrap.replaceChildren(el('span', { class: 'fr-confirm-text fr-error-text', text: `Failed: ${e.message}` }));
-        }
-      });
-      noBtn.addEventListener('click', showIdle);
-      wrap.replaceChildren(el('span', { class: 'fr-confirm-text', text: 'Cancel this booking?' }), yesBtn, noBtn);
-    }
+    const trigger = el('button', {
+      class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Cancel', 'aria-expanded': 'false',
+    });
+    // Yes sits to the LEFT of No, which is the reverse of the usual order:
+    // No lands on the exact spot the finger just left (the trigger's), so a
+    // double-tap cannot cancel a booking. The danger fill makes Yes just as
+    // findable from either side.
+    const yesBtn = el('button', { class: 'fr-btn fr-btn--danger fr-btn--sm', type: 'button', text: 'Yes' });
+    const noBtn = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'No' });
 
     function showIdle() {
-      const cancelBtn = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Cancel' });
-      cancelBtn.addEventListener('click', showAsk);
-      wrap.replaceChildren(cancelBtn);
+      row.classList.remove('is-confirming');
+      title.textContent = name;
+      title.title = name;
+      meta.textContent = when;
+      meta.title = when;
+      meta.classList.remove('fr-error-text');
+      trigger.setAttribute('aria-expanded', 'false');
+      yesBtn.disabled = false;
+      yesBtn.textContent = 'Yes';
+      noBtn.disabled = false;
+      wrap.replaceChildren(trigger);
     }
+    row.__frCloseConfirm = showIdle;
+
+    trigger.addEventListener('click', (e) => {
+      // One row asking at a time — two rows both reading "Cancel …?" is a
+      // genuine misread risk, not just noise.
+      for (const other of contentEl.querySelectorAll('.fr-row.is-confirming')) {
+        if (other !== row && other.__frCloseConfirm) other.__frCloseConfirm();
+      }
+      row.classList.add('is-confirming');
+      const asking = `Cancel ${name}?`;
+      title.textContent = asking;
+      title.title = asking;
+      trigger.setAttribute('aria-expanded', 'true');
+      wrap.replaceChildren(yesBtn, noBtn);
+      // Only chase the focus for a keyboard activation (click.detail === 0
+      // means Enter/Space, not a real pointer) — a tap would otherwise be
+      // left with a focus ring parked on a button it never targeted.
+      if (e.detail === 0) noBtn.focus();
+    });
+
+    noBtn.addEventListener('click', () => {
+      showIdle();
+      trigger.focus();
+    });
+
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && row.classList.contains('is-confirming')) {
+        showIdle();
+        trigger.focus();
+      }
+    });
+
+    yesBtn.addEventListener('click', async () => {
+      yesBtn.disabled = true;
+      noBtn.disabled = true;
+      yesBtn.textContent = '…';
+      try {
+        const userId = await resolveUserId();
+        await callAura('CustomBookingController', 'cancelReservation', { userId, bookingId: booking.bookingId });
+        bookingsCache = null;
+        await switchTab('bookings');
+      } catch (e) {
+        // The failure replaces the time line rather than adding anything:
+        // the row still can't change size, and the title above still says
+        // which booking failed. Both ways out stay where they are.
+        const failure = `Couldn't cancel: ${e.message}`;
+        meta.textContent = failure;
+        meta.title = failure;
+        meta.classList.add('fr-error-text');
+        yesBtn.disabled = false;
+        yesBtn.textContent = 'Retry';
+        noBtn.disabled = false;
+      }
+    });
 
     showIdle();
-    return wrap;
   }
 
   // ---------------------------------------------------------------------
@@ -1638,7 +1786,7 @@ body.flame-reskin-off #flame-reskin-toggle {
         for (const s of slots) {
           const slotBtn = el('button', { class: 'fr-slot', type: 'button' });
           slotBtn.append(
-            el('span', { class: 'fr-slot-time', text: `${s.startTime} – ${s.endTime}` }),
+            el('span', { class: 'fr-slot-time', text: compactTimeRange(s.startTime, s.endTime) }),
             el('span', { class: 'fr-slot-cap', text: `${s.availableCapacity} left` })
           );
           if (s.availableCapacity <= 0) slotBtn.disabled = true;
@@ -1706,7 +1854,7 @@ body.flame-reskin-off #flame-reskin-toggle {
 
       confirmWrap.replaceChildren(
         el('div', { class: 'fr-confirm-panel' }, [
-          el('p', { class: 'fr-confirm-panel-title', text: `${slot.startTime} – ${slot.endTime}` }),
+          el('p', { class: 'fr-confirm-panel-title', text: compactTimeRange(slot.startTime, slot.endTime) }),
           ...(purposeInput ? [purposeInput] : []),
           ...(attendeeInput ? [attendeeInput] : []),
           submitBtn,
