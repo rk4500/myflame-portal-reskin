@@ -789,3 +789,25 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   - Tapping anywhere else on the screen (outside click listener) immediately cancels the prompt and restores the tile state.
   - Tapping the tile a second time while in `is-confirming-cancel` state confirms intent removal (`removeIntent`) and refreshes availability.
 
+### 6. Gyan Tab Loading & Welcome Text Updates (`gyan-updates` branch)
+- **Welcome Explanation Cleanup**: Cleaned `welcomeMessage` and `introductionText` fallbacks to sanitize stock Salesforce/Aura references to non-existent "Start chat" buttons, presenting clean welcome text ("Ask about classes, facility bookings, campus info, or anything else Gyan can help with.").
+- **Non-Blocking Tab Mount**: Removed full-page loading spinner on tab mount. `renderGyan` paints the UI layout synchronously, initiating background context initialization without hiding the page.
+- **Interactive Composer Textbox**: Composer `inputEl` remains **enabled and interactive at all times**, allowing users to type their queries immediately while context initializes or while an assistant turn is running.
+- **Send Button Loading Spinner**: `sendBtn` displays a greyed-out spinning loader icon (`.fr-spinner-svg`) while initializing or waiting for assistant responses, disabling submission until ready while leaving the input field free to edit.
+
+### 7. Smart Time-of-Day Gyan Prompt Chips (`gyan-updates` branch)
+- **Time-Aware Mess Meal Intelligence (`getSmartGyanChips`)**:
+  - `00:00 - 10:59`: Prompts **Breakfast today** & **Lunch today**.
+  - `11:00 - 15:59`: Prompts **Lunch today** & **Dinner tonight** (skipping morning/past meals).
+  - `16:00 - 18:59`: Prompts **Snacks today** & **Dinner tonight**.
+  - `19:00 - 23:59`: Prompts **Dinner tonight** & **Tomorrow's breakfast**.
+- **Contextual Chips**: Always includes **Next class** and **Sports slots** chips alongside meal chips.
+### 8. Basic Asterisk Bold Support & Thread Disposal Guards (`gyan-updates` branch)
+- **Sanitized Bold Parsing (`parseGyanBold` & `escapeHtml`)**:
+  - Converts `**bold**` or `*bold*` to `<strong>bold</strong>` rendered in bold weight (`font-weight: 700`).
+  - *Known Limitation Note*: On certain devices/browsers, asterisk-wrapped text might not render visually bold if system font weights do not support standard 700 weight variants.
+- **In-Flight Turn Cancellation & Disabled "New chat"**:
+  - The **New chat** header button is disabled (`opacity: 0.4`, `pointer-events: none`) while Gyan is initializing or generating a response (`gyanState.sending`), preventing broken thread states.
+### 9. Smooth Scroll to Confirm Button (`main` branch)
+- **Automatic Viewport Centering**: Selecting any valid open or schedulable slot triggers `submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' })` so the confirm / autobook action button immediately scrolls smoothly into view.
+

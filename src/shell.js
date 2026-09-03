@@ -64,6 +64,7 @@ export async function switchTab(id) {
   currentTab = id;
   const token = ++ui.activeToken;
   ui.root.querySelectorAll('.fr-nav-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === id));
+  if (ui.contentEl) ui.contentEl.classList.toggle('fr-content--gyan', id === 'gyan');
   renderLoading();
   try {
     await RENDERERS[id](token);
