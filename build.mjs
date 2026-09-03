@@ -7,7 +7,7 @@
 // check on the build still passes.
 //
 //   npm run build          one-shot
-//   npm run watch          rebuild on change (skips the APK-side hook)
+//   npm run watch          same, on every save
 //
 // portal-reskin.user.js is a committed build output, not a source file:
 // it is what gets pasted into Tampermonkey, what preview.html loads, and
@@ -117,15 +117,20 @@ async function buildOnce() {
 }
 
 if (watching) {
-  // Watch mode is for iterating against preview.html, which loads the
-  // userscript directly — the APK-side hook is not part of that loop.
   const watcher = rollupWatch({ ...inputOptions, output: outputOptions });
   watcher.on('event', (event) => {
-    if (event.code === 'BUNDLE_END') console.log('rebuilt portal-reskin.user.js');
     if (event.code === 'ERROR') console.error(event.error);
     if (event.result) event.result.close();
+    if (event.code !== 'BUNDLE_END') return;
+    // Watch rebuilds the hook too. It was originally skipped here on the
+    // assumption it was the expensive half; measured, the fuse is ~1.4ms
+    // against rollup's ~45ms, so skipping it bought nothing and left
+    // hook.js stale for exactly as long as you were iterating — which is
+    // the drift this build exists to prevent.
+    fuseHook().catch((e) => console.error(e.message));
+    console.log(`rebuilt (${event.duration}ms)`);
   });
-  console.log('watching src/ — run `npm run build` before patching an APK (watch skips hook.js)');
+  console.log('watching src/ — writes portal-reskin.user.js and .patch-tools/hook.js');
 } else {
   await buildOnce();
   await fuseHook();

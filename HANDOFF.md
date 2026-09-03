@@ -591,8 +591,10 @@ Harness: `?auto=sched-rule` clicks three later slots for one resource and assert
 ```bash
 npm install     # once
 npm run build   # src/ -> portal-reskin.user.js -> .patch-tools/hook.js
-npm run watch   # rebuild on save; skips the Android hook
+npm run watch   # same, on every save
 ```
+
+Measured on this machine: `npm run build` ~210ms end to end (mostly npm's own wrapper and node's boot); inside `watch`, a save rebuilds in **50-110ms**. The hook fuse is ~1.4ms of that, which is why watch does it too — skipping it bought nothing and left `hook.js` stale for exactly as long as you were iterating, which is the drift this build exists to prevent.
 
 **Edit `src/`, never `portal-reskin.user.js`.** That file stays tracked — it is what gets pasted into Tampermonkey, what `preview.html` loads, and what a release ships — but it is generated now.
 
