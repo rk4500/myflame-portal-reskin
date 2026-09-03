@@ -161,6 +161,30 @@ function getCleanWelcomeText() {
   return intro;
 }
 
+function getSmartGyanChips() {
+  const hour = new Date().getHours();
+  const chips = [];
+
+  if (hour >= 0 && hour < 11) {
+    chips.push({ text: "What's for breakfast today?", label: "Breakfast today", icon: 'utensils' });
+    chips.push({ text: "What's for lunch today?", label: "Lunch today", icon: 'utensils' });
+  } else if (hour >= 11 && hour < 16) {
+    chips.push({ text: "What's for lunch today?", label: "Lunch today", icon: 'utensils' });
+    chips.push({ text: "What's for dinner tonight?", label: "Dinner tonight", icon: 'utensils' });
+  } else if (hour >= 16 && hour < 19) {
+    chips.push({ text: "What's for snacks today?", label: "Snacks today", icon: 'utensils' });
+    chips.push({ text: "What's for dinner tonight?", label: "Dinner tonight", icon: 'utensils' });
+  } else {
+    chips.push({ text: "What's for dinner tonight?", label: "Dinner tonight", icon: 'utensils' });
+    chips.push({ text: "What's for breakfast tomorrow?", label: "Tomorrow's breakfast", icon: 'utensils' });
+  }
+
+  chips.push({ text: "What is my next class?", label: "Next class", icon: 'calendar' });
+  chips.push({ text: "Are sports slots available today?", label: "Sports slots", icon: 'book' });
+
+  return chips;
+}
+
 export function renderGyan(token) {
   if (token !== ui.activeToken) return;
 
@@ -210,9 +234,26 @@ export function renderGyan(token) {
     }
 
     if (!gyanState.messages.length && !gyanState.sending) {
-      messagesEl.replaceChildren(
-        renderEmpty('sparkle', getCleanWelcomeTitle(), getCleanWelcomeText())
-      );
+      const emptyWrap = el('div', { class: 'fr-gyan-welcome-wrap' });
+      const emptyEl = renderEmpty('sparkle', getCleanWelcomeTitle(), getCleanWelcomeText());
+
+      const suggestionsEl = el('div', { class: 'fr-gyan-suggestions' });
+      const suggestionsLabel = el('div', { class: 'fr-gyan-suggestions-label', text: 'Suggested questions' });
+      const chipsRow = el('div', { class: 'fr-gyan-chips' });
+
+      for (const c of getSmartGyanChips()) {
+        const btn = el('button', { class: 'fr-gyan-chip', type: 'button' });
+        btn.append(icon(c.icon), document.createTextNode(c.label));
+        btn.addEventListener('click', () => {
+          inputEl.value = c.text;
+          composerForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        });
+        chipsRow.appendChild(btn);
+      }
+
+      suggestionsEl.append(suggestionsLabel, chipsRow);
+      emptyWrap.append(emptyEl, suggestionsEl);
+      messagesEl.replaceChildren(emptyWrap);
       return;
     }
     const list = el('div', { class: 'fr-gyan-list' });

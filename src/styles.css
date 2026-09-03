@@ -555,6 +555,21 @@
    conversation) and gets centered instead, not bottom-anchored. */
 .fr-gyan-list { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
 .fr-gyan-messages > .fr-empty { margin: auto 0; }
+.fr-gyan-welcome-wrap { margin: auto 0; display: flex; flex-direction: column; align-items: center; gap: 24px; width: 100%; }
+.fr-gyan-suggestions { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 540px; }
+.fr-gyan-suggestions-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+.fr-gyan-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.fr-gyan-chip {
+  font: inherit; font-size: 0.8125rem; font-weight: 500; color: var(--text);
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 20px;
+  padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  transition: all 150ms ease; user-select: none;
+}
+.fr-gyan-chip .icon { width: 14px; height: 14px; color: var(--accent); }
+.fr-gyan-chip:hover, .fr-gyan-chip:active {
+  background: var(--bg-elevated-2); border-color: var(--accent); color: var(--text);
+  transform: translateY(-1px);
+}
 .fr-gyan-msg { display: flex; }
 .fr-gyan-msg--user { justify-content: flex-end; }
 .fr-gyan-msg--assistant { justify-content: flex-start; }

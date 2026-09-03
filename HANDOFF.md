@@ -795,3 +795,12 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
 - **Interactive Composer Textbox**: Composer `inputEl` remains **enabled and interactive at all times**, allowing users to type their queries immediately while context initializes or while an assistant turn is running.
 - **Send Button Loading Spinner**: `sendBtn` displays a greyed-out spinning loader icon (`.fr-spinner-svg`) while initializing or waiting for assistant responses, disabling submission until ready while leaving the input field free to edit.
 
+### 7. Smart Time-of-Day Gyan Prompt Chips (`gyan-updates` branch)
+- **Time-Aware Mess Meal Intelligence (`getSmartGyanChips`)**:
+  - `00:00 - 10:59`: Prompts **Breakfast today** & **Lunch today**.
+  - `11:00 - 15:59`: Prompts **Lunch today** & **Dinner tonight** (skipping morning/past meals).
+  - `16:00 - 18:59`: Prompts **Snacks today** & **Dinner tonight**.
+  - `19:00 - 23:59`: Prompts **Dinner tonight** & **Tomorrow's breakfast**.
+- **Contextual Chips**: Always includes **Next class** and **Sports slots** chips alongside meal chips.
+- **One-Tap Autosend**: Tapping any chip populates the query into the composer input field and automatically submits it to Gyan instantly.
+
