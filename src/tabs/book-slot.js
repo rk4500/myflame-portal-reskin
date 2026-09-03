@@ -5,6 +5,7 @@
 import { callAura, resolveUserId } from '../aura.js';
 import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, slotStartDate } from '../autobook.js';
 import { addDays, cleanResourceName, compactTimeRange, dayLabel, isoDateLocal, sameDay, startOfToday } from '../dates.js';
+import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
 import { buildDayNav, buildPicker, renderEmpty } from '../shell.js';
 import { cache, ui } from '../state.js';
@@ -230,6 +231,7 @@ export async function renderBookSlot(token) {
         // name the new booking id ("...Booking Id R-714794...").
         if (/\bR-\d+\b/.test(result)) {
           cache.bookings = null; // invalidate so My Bookings refetches
+          clearPersistedBookings();
           confirmWrap.replaceChildren(el('div', { class: 'fr-success-panel', text: result }));
         } else {
           submitBtn.disabled = false;

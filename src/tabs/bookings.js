@@ -4,6 +4,7 @@
 
 import { callAura, resolveUserId } from '../aura.js';
 import { cleanResourceName, formatBookingWhen, parseBookingDateTime } from '../dates.js';
+import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
 import { renderEmpty, switchTab } from '../shell.js';
 import { cache, ui } from '../state.js';
@@ -145,6 +146,7 @@ function attachCancelConfirm(booking, parts) {
       const userId = await resolveUserId();
       await callAura('CustomBookingController', 'cancelReservation', { userId, bookingId: booking.bookingId });
       cache.bookings = null;
+      clearPersistedBookings();
       await switchTab('bookings');
     } catch (e) {
       // The failure replaces the time line rather than adding anything:

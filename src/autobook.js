@@ -16,6 +16,7 @@
 
 import { auraState, callAura, resolveUserId } from './aura.js';
 import { cleanResourceName, compactTimeRange, formatTime, isoDateLocal, parseBookingDateTime, shortDayLabel } from './dates.js';
+import { clearPersistedBookings } from './persist.js';
 import { el } from './dom.js';
 import { cache, ui } from './state.js';
 
@@ -336,6 +337,7 @@ export async function runAutoBook() {
           intent.message = text;
           claimed.add(classKey);
           cache.bookings = null;
+          clearPersistedBookings();
         } else {
           // createReservation answers refusals with state:SUCCESS and a
           // plain string, so the text is the only signal there is.

@@ -42,6 +42,14 @@
 </script>
 
 <script>
+  // ?slow=<ms> stretches every stubbed aura call, so a screenshot or a
+  // DOM sample can be taken while requests are still in flight. Without
+  // it the stub answers in 80ms and there is no "loading" to observe.
+  const __slow = new URLSearchParams(location.search).get('slow');
+  if (__slow) window.__FLAME_RESKIN_PREVIEW_DELAY__ = Number(__slow);
+</script>
+
+<script>
   // Set before portal-reskin.user.js runs so it boots straight into this
   // tab — a single switchTab() call, not two racing ones.
   window.__FLAME_RESKIN_INITIAL_TAB__ = new URLSearchParams(location.search).get('tab') || 'home';
@@ -233,6 +241,34 @@
   // but that can still be sitting in localStorage from before that rule
   // existed. Exercises runAutoBook's own guard rather than the UI's.
   const seed = new URLSearchParams(location.search).get('seed');
+  // ?auth=<good|stale|none> controls what the previous session left behind.
+  // The stub short-circuits the network, so this exercises the storage and
+  // retry logic rather than a real handshake.
+  const __auth = new URLSearchParams(location.search).get('auth');
+  if (__auth === 'good' || __auth === 'stale') {
+    localStorage.setItem('flame-aura-auth', JSON.stringify({
+      context: '{"mode":"PROD","fwuid":"stub"}',
+      token: __auth === 'stale' ? 'STALE-TOKEN' : 'GOOD-TOKEN',
+      userId: '0055i00000CwfKqAAJ',
+    }));
+  } else {
+    localStorage.removeItem('flame-aura-auth');
+  }
+  if (seed === 'persisted') {
+    // What Home would have written on a previous launch. With ?slow= this
+    // is what proves the first paint shows real content, not a spinner.
+    // Course names are marked so a sample can tell the stale paint from
+    // the revalidated one. Identical data in both would prove only that
+    // *something* rendered, not that the refetch ever replaced it.
+    localStorage.setItem('flame-data-cache', JSON.stringify({
+      events: window.__FLAME_RESKIN_PREVIEW__['StudentPortalCalendarCtrl.getAllScheduledEvents']
+        .map((e) => ({ ...e, courseName: 'STALE ' + (e.courseName || e.title) })),
+      bookings: window.__FLAME_RESKIN_PREVIEW__['CustomBookingController.getReservations'],
+      savedAt: Date.now(),
+    }));
+  } else if (seed !== 'keep') {
+    localStorage.removeItem('flame-data-cache');
+  }
   if (seed === 'twin') {
     const slot = firstOpenGymSlot();
     const base = { facilityName: 'Sports Facilities', ...slot, state: 'waiting', message: '', createdAt: Date.now() };
@@ -433,6 +469,41 @@
           out.push(`${sel}[${i}] ${Math.round(n.getBoundingClientRect().height)}px  ${label}`);
         });
       }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'authstate') {
+      // What did the script start with, and what is it holding now? A
+      // stored token should be in hand before any request goes out.
+      await wait(1200);
+      let stored = null;
+      try { stored = JSON.parse(localStorage.getItem('flame-aura-auth')); } catch (e) {}
+      const out = [
+        'stored token now: ' + (stored ? stored.token : 'none'),
+        'rows rendered:    ' + document.querySelectorAll('.fr-row').length,
+        'errors:           ' + (window.__FLAME_ERRORS__.length || 'none'),
+      ];
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'coldpaint') {
+      // What is on screen while the first requests are still in flight?
+      // Sampled well before ?slow= lets them resolve, then again after.
+      const sample = (label) => {
+        const rows = document.querySelectorAll('.fr-row').length;
+        const spinner = document.querySelectorAll('.fr-loading').length;
+        const first = document.querySelector('.fr-row-title');
+        return `${label}: ${rows} rows, ${spinner} spinner, first=${first ? JSON.stringify(first.textContent) : 'none'}`;
+      };
+      const out = [];
+      await wait(400);
+      out.push(sample('in-flight  '));
+      await wait(2500);
+      out.push(sample('settled    '));
       const pre = document.createElement('pre');
       pre.id = 'measure';
       pre.textContent = out.join('\n');

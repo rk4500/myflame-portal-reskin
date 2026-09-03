@@ -15,14 +15,64 @@ export const auraState = {
   userId: null,    // Salesforce User Id, sniffed from any params.userId
 };
 
+// Last session's credentials, so the first request does not have to wait
+// for the page to reveal a token by making one of its own.
+//
+// Measured against a HAR: the page's first tokened request goes out 0.297s
+// after the document loads, but the reskin is only injected at
+// onPageFinished — well after that — so it then waits for the *next* one.
+// The token survives page loads (two separately captured sessions share
+// one), so keeping it is worth a try on the next launch.
+//
+// Purely an optimistic head start. Sniffing still runs, and a rejected
+// token costs one wasted request that callAura retries with the sniffed
+// value — never an error the user sees.
+const AUTH_KEY = 'flame-aura-auth';
+
+function loadStoredAuth() {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved || !saved.context || !saved.token) return;
+    auraState.context = saved.context;
+    auraState.token = saved.token;
+    // userId is derived from the account, not the session — safe to reuse
+    // even when the token turns out to be stale.
+    if (saved.userId) auraState.userId = saved.userId;
+  } catch (e) {
+    // Unreadable or from an older shape: fall back to sniffing, which is
+    // exactly the behaviour before any of this existed.
+  }
+}
+
+function storeAuth() {
+  try {
+    if (!auraState.context || !auraState.token) return;
+    localStorage.setItem(AUTH_KEY, JSON.stringify({
+      context: auraState.context,
+      token: auraState.token,
+      userId: auraState.userId,
+    }));
+  } catch (e) {}
+}
+
+function forgetStoredAuth() {
+  try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
+}
+
+loadStoredAuth();
+
 function harvestFromBody(bodyStr) {
   if (!bodyStr || bodyStr.indexOf('aura.context') === -1) return;
   try {
     const params = new URLSearchParams(bodyStr);
     const ctx = params.get('aura.context');
     const tok = params.get('aura.token');
+    const changed = ctx !== auraState.context || tok !== auraState.token;
     if (ctx) auraState.context = ctx;
     if (tok) auraState.token = tok;
+    if (changed && auraState.context && auraState.token) storeAuth();
 
     const message = params.get('message');
     if (message) {
@@ -109,6 +159,30 @@ export async function resolveUserId() {
 let actionCounter = 0;
 
 export async function callAura(classname, method, params = null, cacheable = false, namespace = '') {
+  try {
+    return await sendAura(classname, method, params, cacheable, namespace);
+  } catch (e) {
+    // One retry, and only for the case this exists to cover: the stored
+    // credentials were stale. sendAura has already cleared them, so the
+    // wait below blocks until the page's own traffic supplies a live
+    // token — which it does within a second of the document loading.
+    if (!e || !e.frInvalidToken) throw e;
+    // The residual risk this whole optimisation carries: the stored token
+    // is dead, so we now need a sniffed one, and sniffing only sees
+    // requests made *after* the reskin was injected. The page does keep
+    // making them, but on the rare launch where a token has expired this
+    // is a wait the old always-sniff path never had. 8s rather than the
+    // 15s default so a bad case fails visibly instead of looking hung.
+    //
+    // Injecting the script at document-start would remove this entirely —
+    // the hooks would then be in place before the page's own first
+    // request, which a HAR puts at 0.297s after the document loads.
+    await waitFor(() => auraState.context && auraState.token, 8000);
+    return await sendAura(classname, method, params, cacheable, namespace);
+  }
+}
+
+async function sendAura(classname, method, params = null, cacheable = false, namespace = '') {
   // Preview/dev hook: when a static preview page defines this global,
   // short-circuit the network entirely and resolve canned data. Never
   // set on the real portal, so this is inert in production.
@@ -116,7 +190,10 @@ export async function callAura(classname, method, params = null, cacheable = fal
     const key = `${classname}.${method}`;
     const stub = window.__FLAME_RESKIN_PREVIEW__[key];
     if (stub === undefined) throw new Error(`no preview stub for ${key}`);
-    await new Promise((r) => setTimeout(r, 80));
+    // The harness raises this to simulate a slow link, which is the only
+    // way to observe what is on screen *while* a request is in flight —
+    // the whole point of Home's stale-first paint.
+    await new Promise((r) => setTimeout(r, window.__FLAME_RESKIN_PREVIEW_DELAY__ || 80));
     return typeof stub === 'function' ? stub(params) : stub;
   }
 
@@ -174,8 +251,13 @@ export async function callAura(classname, method, params = null, cacheable = fal
 
   // Token likely rotated — clear it so the next native page request
   // (or a manual reload) repopulates auraState, then surface the error.
+  const err = new Error(`aura call failed (${classname}.${method}): ${JSON.stringify(action.error || action)}`);
   if (JSON.stringify(action).indexOf('INVALID_TOKEN') !== -1) {
     auraState.token = null;
+    // Drop the stored copy too, or every launch would start by spending a
+    // request on the same dead token.
+    forgetStoredAuth();
+    err.frInvalidToken = true;
   }
-  throw new Error(`aura call failed (${classname}.${method}): ${JSON.stringify(action.error || action)}`);
+  throw err;
 }

@@ -187,6 +187,189 @@ try {
     });
   }
 
+  // Boot cover: a plain opaque View laid over everything until the reskin
+  // has painted.
+  //
+  // The three CSS attempts before this all lost the same way. A style
+  // injected into the document is only as durable as the document, and
+  // during boot there are three of them: the SSO bounce page, the copy of
+  // it that rewrites itself to show Salesforce's own "Loading..." card
+  // (this is the one that wipes <head>, taking the style with it), and
+  // finally /s/. Re-applying on a timer only ever shortens the flash to
+  // the length of one tick; it cannot remove it, because the wipe and the
+  // repair are always in that order.
+  //
+  // So do it where setBackgroundColor already works: natively, above the
+  // WebView, where no document can reach it. The page underneath loads
+  // completely and normally the whole time — nothing is blocked, delayed
+  // or suppressed, it simply is not on screen yet. That also keeps the
+  // stock UI genuinely available: it is fully loaded behind the cover, so
+  // long-pressing Home later shows a live page, not a blank one.
+  var COVER_TAG = 'FLAME_BOOT_COVER';
+  var ACCENT = 0xFF5B8CFF | 0; // matches the reskin's --accent
+
+  // Absolute backstop. If the reskin never arrives — a hook that silently
+  // failed, a login page, a portal outage — the cover must not strand the
+  // app behind an opaque view forever.
+  var COVER_MAX_MS = 15000;
+  var coverShownAt = 0;
+
+  function showBootCover(view) {
+    var retained = Java.retain(view);
+    Java.scheduleOnMainThread(function () {
+      try {
+        var activity = resolveActivity(retained);
+        if (!activity) {
+          log(TAG + ' cover: no activity');
+          return;
+        }
+        var decorView = activity.getWindow().getDecorView();
+        var FrameLayout = Java.use('android.widget.FrameLayout');
+        var FrameLayoutParams = Java.use('android.widget.FrameLayout$LayoutParams');
+        var group = Java.cast(decorView, FrameLayout);
+        if (group.findViewWithTag(COVER_TAG) !== null) return;
+
+        var ctx = activity.getApplicationContext();
+        var cover = FrameLayout.$new(ctx);
+        cover.setBackgroundColor(DARK_BG);
+        cover.setTag(COVER_TAG);
+        // Swallow touches: the portal is live underneath, and a tap that
+        // lands on a control the user cannot see is worse than no tap.
+        cover.setClickable(true);
+        try {
+          // Indeterminate spinner, tinted to the reskin's accent, so the
+          // wait reads as this app loading rather than a dark rectangle.
+          var ProgressBar = Java.use('android.widget.ProgressBar');
+          var ColorStateList = Java.use('android.content.res.ColorStateList');
+          var spinner = ProgressBar.$new(ctx);
+          spinner.setIndeterminate(true);
+          spinner.setIndeterminateTintList(ColorStateList.valueOf(ACCENT));
+          var slp = FrameLayoutParams.$new(-2, -2); // WRAP_CONTENT
+          slp.gravity.value = 17;                   // Gravity.CENTER
+          cover.addView(spinner, slp);
+        } catch (e) {
+          log(TAG + ' spinner unavailable (cover still shown): ' + e);
+        }
+        // -1/-1 = MATCH_PARENT: the whole window, including under the
+        // system bars, since the app is edge-to-edge.
+        group.addView(cover, FrameLayoutParams.$new(-1, -1));
+        coverShownAt = Date.now();
+        log(TAG + ' boot cover shown');
+        setTimeout(function () { hideBootCover(retained, 'timeout'); }, COVER_MAX_MS);
+      } catch (e) {
+        log(TAG + ' showBootCover error: ' + e);
+      }
+    });
+  }
+
+  function hideBootCover(view, why) {
+    var retained = Java.retain(view);
+    Java.scheduleOnMainThread(function () {
+      try {
+        var activity = resolveActivity(retained);
+        if (!activity) return;
+        var FrameLayout = Java.use('android.widget.FrameLayout');
+        var group = Java.cast(activity.getWindow().getDecorView(), FrameLayout);
+        var cover = group.findViewWithTag(COVER_TAG);
+        if (cover === null) return;
+        group.removeView(cover);
+        log(TAG + ' boot cover removed (' + why + ', ' + (Date.now() - coverShownAt) + 'ms)');
+      } catch (e) {
+        log(TAG + ' hideBootCover error: ' + e);
+      }
+    });
+  }
+
+  // Reveal as soon as the reskin's own root is in the document — the shell
+  // paints immediately, well before its data arrives, so this is about one
+  // frame after injection. A handful of checks, not a polling loop: the
+  // cover is already correct, this only decides when to drop it.
+  var REVEAL_CHECK_MS = 50;
+  var REVEAL_MAX_CHECKS = 40;
+
+  var RevealCallback = null;
+  var revealHandler = function () {};
+  function revealCallback(onValue) {
+    revealHandler = onValue;
+    try {
+      if (RevealCallback === null) {
+        RevealCallback = Java.registerClass({
+          name: 'com.flame.inject.RevealCb',
+          implements: [Java.use('android.webkit.ValueCallback')],
+          methods: {
+            onReceiveValue: function (value) {
+              try { revealHandler(String(value)); } catch (e) {}
+            },
+          },
+        });
+      }
+      if (RevealCallback === false) return null;
+      return RevealCallback.$new();
+    } catch (e) {
+      // Silent failure here is what made the cover hang with an empty
+      // log — evaluateJavascript(js, null) then reports nothing at all.
+      log(TAG + ' reveal callback unavailable: ' + e);
+      RevealCallback = false;
+      return null;
+    }
+  }
+
+  // "The root element exists" is not "the root element is on screen", and
+  // uncovering on existence alone let one frame of Salesforce white
+  // through. The obvious fix — two nested requestAnimationFrames, the
+  // standard way to wait for a paint — does not work here and made the
+  // cover hang: an opaque native View over the WebView means Android can
+  // skip drawing it, so there are no frames, so rAF never fires. The
+  // reveal was waiting on a paint the cover itself was preventing.
+  //
+  // So: existence, plus a fixed grace below. It cannot deadlock, because
+  // nothing about it depends on the WebView being drawn.
+  var REVEAL_JS =
+    "(function(){try{" +
+    "if(document.getElementById('flame-reskin-root'))return 'ready';" +
+    "if(document.body&&document.body.classList.contains('flame-reskin-off'))return 'stock';" +
+    "return 'waiting';" +
+    "}catch(e){return 'ready';}})();";
+
+  function revealWhenReskinPaints(view) {
+    var retained = Java.retain(view);
+    var checks = 0;
+    var timer = setInterval(function () {
+      checks++;
+      if (checks > REVEAL_MAX_CHECKS) {
+        clearInterval(timer);
+        log(TAG + ' reveal gave up after ' + checks + ' checks');
+        hideBootCover(retained, 'gave up');
+        return;
+      }
+      try {
+        Java.scheduleOnMainThread(function () {
+          try {
+            retained.evaluateJavascript(REVEAL_JS, revealCallback(function (status) {
+              if (status.indexOf('ready') === -1 && status.indexOf('stock') === -1) return;
+              clearInterval(timer);
+              hideBootCover(retained, status.replace(/"/g, ''));
+            }));
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }, REVEAL_CHECK_MS);
+  }
+
+  // The reskin goes in as early as the document allows, not at
+  // onPageFinished. Measured across three launches, onPageStarted on /s/
+  // fires 1.38-1.64s earlier, and the instrumented run showed that
+  // document is the final one: a style attached at onPageStarted survived
+  // loading -> interactive -> complete without being replaced.
+  //
+  // Injecting earlier also puts our fetch/XHR hooks in place before Aura
+  // makes its own first request (0.297s after the document loads, per the
+  // HAR), which is where the aura token comes from — today we arrive
+  // after it and have to wait for the next one.
+  //
+  // Deliberately /s/ only. frontdoor.jsp rewrites its own document, so
+  // anything injected there is discarded; it is also the page whose
+  // missing viewport meta once produced a desktop-layout flash.
   function hookClient(clientObj) {
     try {
       var className = clientObj.$className || clientObj.getClass().getName();
@@ -211,6 +394,7 @@ try {
             if (url && url.indexOf('my.flame.edu.in/s/') !== -1) {
               log(TAG + ' injecting reskin into ' + url);
               view.evaluateJavascript(SCRIPT, null);
+              revealWhenReskinPaints(view);
               try {
                 recolorStatusBar(view);
               } catch (e2) {
@@ -247,6 +431,11 @@ try {
         // itself is wired up, before any navigation/page paint has occurred.
         try {
           this.setBackgroundColor(DARK_BG);
+          // Same moment, same reason, one layer up: the background colour
+          // only shows where the document is transparent, and Salesforce's
+          // boot pages are opaque white. The cover is what the user
+          // actually looks at until the reskin is ready.
+          showBootCover(this);
         } catch (e) {
           log(TAG + ' setBackgroundColor error: ' + e);
         }

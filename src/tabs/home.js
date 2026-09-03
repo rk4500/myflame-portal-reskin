@@ -10,14 +10,29 @@
 import { callAura, resolveUserId } from '../aura.js';
 import { addDays, cleanResourceName, dayLabel, formatBookingWhen, formatTime, parseBookingDateTime, sameDay, startOfToday, startOfWeekMonday } from '../dates.js';
 import { el } from '../dom.js';
+import { readPersisted, writePersisted } from '../persist.js';
 import { buildDateStrip, renderEmpty, switchTab } from '../shell.js';
 import { cache, ui } from '../state.js';
 
 const homeState = { weekStart: startOfWeekMonday(startOfToday()), selected: startOfToday() };
 
+// Home is the boot tab, so it is the one place where the wait is the
+// first thing you see. It paints last launch's data immediately when
+// there is any, then repaints with the real answer — the requests still
+// go out every time, this only decides what is on screen while they fly.
+//
+// Calendar and My Bookings deliberately don't do this: by the time either
+// is opened, Home's own revalidation has already filled the in-memory
+// cache they read, so they are fast for free and a second stale-paint
+// path would be complexity with nothing to buy.
 export async function renderHome(token) {
   homeState.weekStart = startOfWeekMonday(startOfToday());
   homeState.selected = startOfToday();
+
+  const stale = (!cache.events || !cache.bookings) ? readPersisted() : null;
+  if (stale && stale.events && stale.bookings && token === ui.activeToken) {
+    ui.contentEl.replaceChildren(buildHomePage(stale.events, stale.bookings));
+  }
 
   const userId = await resolveUserId();
   const [events, bookings] = await Promise.all([
@@ -26,8 +41,16 @@ export async function renderHome(token) {
   ]);
   cache.events = events;
   cache.bookings = bookings;
+  writePersisted({ events, bookings });
   if (token !== ui.activeToken) return;
 
+  // homeState is deliberately not reset here: if a day was tapped on the
+  // strip while the fetch was in flight, the repaint keeps that choice
+  // rather than yanking the view back to today under the finger.
+  ui.contentEl.replaceChildren(buildHomePage(events, bookings));
+}
+
+function buildHomePage(events, bookings) {
   const page = el('div', { class: 'fr-page' });
   const title = el('h1', { class: 'fr-page-title', text: dayLabel(homeState.selected) });
   const stripWrap = el('div', {});
@@ -122,5 +145,5 @@ export async function renderHome(token) {
     page.appendChild(bookingsSection);
   }
 
-  ui.contentEl.replaceChildren(page);
+  return page;
 }

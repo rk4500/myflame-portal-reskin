@@ -92,14 +92,64 @@
     userId: null,    // Salesforce User Id, sniffed from any params.userId
   };
 
+  // Last session's credentials, so the first request does not have to wait
+  // for the page to reveal a token by making one of its own.
+  //
+  // Measured against a HAR: the page's first tokened request goes out 0.297s
+  // after the document loads, but the reskin is only injected at
+  // onPageFinished — well after that — so it then waits for the *next* one.
+  // The token survives page loads (two separately captured sessions share
+  // one), so keeping it is worth a try on the next launch.
+  //
+  // Purely an optimistic head start. Sniffing still runs, and a rejected
+  // token costs one wasted request that callAura retries with the sniffed
+  // value — never an error the user sees.
+  const AUTH_KEY = 'flame-aura-auth';
+
+  function loadStoredAuth() {
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved || !saved.context || !saved.token) return;
+      auraState.context = saved.context;
+      auraState.token = saved.token;
+      // userId is derived from the account, not the session — safe to reuse
+      // even when the token turns out to be stale.
+      if (saved.userId) auraState.userId = saved.userId;
+    } catch (e) {
+      // Unreadable or from an older shape: fall back to sniffing, which is
+      // exactly the behaviour before any of this existed.
+    }
+  }
+
+  function storeAuth() {
+    try {
+      if (!auraState.context || !auraState.token) return;
+      localStorage.setItem(AUTH_KEY, JSON.stringify({
+        context: auraState.context,
+        token: auraState.token,
+        userId: auraState.userId,
+      }));
+    } catch (e) {}
+  }
+
+  function forgetStoredAuth() {
+    try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
+  }
+
+  loadStoredAuth();
+
   function harvestFromBody(bodyStr) {
     if (!bodyStr || bodyStr.indexOf('aura.context') === -1) return;
     try {
       const params = new URLSearchParams(bodyStr);
       const ctx = params.get('aura.context');
       const tok = params.get('aura.token');
+      const changed = ctx !== auraState.context || tok !== auraState.token;
       if (ctx) auraState.context = ctx;
       if (tok) auraState.token = tok;
+      if (changed && auraState.context && auraState.token) storeAuth();
 
       const message = params.get('message');
       if (message) {
@@ -186,6 +236,30 @@
   let actionCounter = 0;
 
   async function callAura(classname, method, params = null, cacheable = false, namespace = '') {
+    try {
+      return await sendAura(classname, method, params, cacheable, namespace);
+    } catch (e) {
+      // One retry, and only for the case this exists to cover: the stored
+      // credentials were stale. sendAura has already cleared them, so the
+      // wait below blocks until the page's own traffic supplies a live
+      // token — which it does within a second of the document loading.
+      if (!e || !e.frInvalidToken) throw e;
+      // The residual risk this whole optimisation carries: the stored token
+      // is dead, so we now need a sniffed one, and sniffing only sees
+      // requests made *after* the reskin was injected. The page does keep
+      // making them, but on the rare launch where a token has expired this
+      // is a wait the old always-sniff path never had. 8s rather than the
+      // 15s default so a bad case fails visibly instead of looking hung.
+      //
+      // Injecting the script at document-start would remove this entirely —
+      // the hooks would then be in place before the page's own first
+      // request, which a HAR puts at 0.297s after the document loads.
+      await waitFor(() => auraState.context && auraState.token, 8000);
+      return await sendAura(classname, method, params, cacheable, namespace);
+    }
+  }
+
+  async function sendAura(classname, method, params = null, cacheable = false, namespace = '') {
     // Preview/dev hook: when a static preview page defines this global,
     // short-circuit the network entirely and resolve canned data. Never
     // set on the real portal, so this is inert in production.
@@ -193,7 +267,10 @@
       const key = `${classname}.${method}`;
       const stub = window.__FLAME_RESKIN_PREVIEW__[key];
       if (stub === undefined) throw new Error(`no preview stub for ${key}`);
-      await new Promise((r) => setTimeout(r, 80));
+      // The harness raises this to simulate a slow link, which is the only
+      // way to observe what is on screen *while* a request is in flight —
+      // the whole point of Home's stale-first paint.
+      await new Promise((r) => setTimeout(r, window.__FLAME_RESKIN_PREVIEW_DELAY__ || 80));
       return typeof stub === 'function' ? stub(params) : stub;
     }
 
@@ -251,10 +328,15 @@
 
     // Token likely rotated — clear it so the next native page request
     // (or a manual reload) repopulates auraState, then surface the error.
+    const err = new Error(`aura call failed (${classname}.${method}): ${JSON.stringify(action.error || action)}`);
     if (JSON.stringify(action).indexOf('INVALID_TOKEN') !== -1) {
       auraState.token = null;
+      // Drop the stored copy too, or every launch would start by spending a
+      // request on the same dead token.
+      forgetStoredAuth();
+      err.frInvalidToken = true;
     }
-    throw new Error(`aura call failed (${classname}.${method}): ${JSON.stringify(action.error || action)}`);
+    throw err;
   }
 
   // Date and time formatting.
@@ -361,6 +443,61 @@
   // one day. Build the "YYYY-MM-DD" string from local fields everywhere instead.
   function isoDateLocal(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  // Last-known data, kept across page loads.
+  //
+  // The in-memory caches in state.js start empty on every launch, so the
+  // first thing you saw after the app booted was a spinner, for as long as
+  // two aura round-trips took — about a second on the device, on top of the
+  // portal's own boot. Everything Home shows is already known from last
+  // time, so it can be on screen immediately and corrected a moment later.
+  //
+  // This is a first-paint hint, never a substitute for fetching: the render
+  // path still issues the same requests every time and repaints with the
+  // answer. That is what keeps a cancelled booking from surviving here for
+  // longer than it takes one request to come back.
+
+  const KEY = 'flame-data-cache';
+
+  // Older than this and it is not worth showing at all — a stale-by-a-day
+  // class list is genuinely useful (the timetable is semester-static), a
+  // stale-by-a-week one is just noise while the real answer loads.
+  const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+  function readPersisted() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || !data.savedAt || Date.now() - data.savedAt > MAX_AGE_MS) return null;
+      return data;
+    } catch (e) {
+      // Private mode, disabled storage, or a shape from an older version:
+      // fall back to the spinner, which is exactly the old behaviour.
+      return null;
+    }
+  }
+
+  function writePersisted(patch) {
+    try {
+      const current = (() => {
+        try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+      })();
+      localStorage.setItem(KEY, JSON.stringify({ ...current, ...patch, savedAt: Date.now() }));
+    } catch (e) {
+      // Storage full or unavailable — the app works, it just boots cold.
+    }
+  }
+
+  // Called wherever the in-memory cache is invalidated by a mutation, so a
+  // booking you just cancelled cannot come back on the next launch and sit
+  // there until the refetch lands.
+  function clearPersistedBookings() {
+    const data = readPersisted();
+    if (!data) return;
+    delete data.bookings;
+    writePersisted(data);
   }
 
   // A tiny createElement wrapper. Every attribute goes through
@@ -711,6 +848,7 @@
             intent.message = text;
             claimed.add(classKey);
             cache.bookings = null;
+            clearPersistedBookings();
           } else {
             // createReservation answers refusals with state:SUCCESS and a
             // plain string, so the text is the only signal there is.
@@ -1384,6 +1522,7 @@
           // name the new booking id ("...Booking Id R-714794...").
           if (/\bR-\d+\b/.test(result)) {
             cache.bookings = null; // invalidate so My Bookings refetches
+            clearPersistedBookings();
             confirmWrap.replaceChildren(el('div', { class: 'fr-success-panel', text: result }));
           } else {
             submitBtn.disabled = false;
@@ -1604,6 +1743,7 @@
         const userId = await resolveUserId();
         await callAura('CustomBookingController', 'cancelReservation', { userId, bookingId: booking.bookingId });
         cache.bookings = null;
+        clearPersistedBookings();
         await switchTab('bookings');
       } catch (e) {
         // The failure replaces the time line rather than adding anything:
@@ -2093,9 +2233,23 @@
 
   const homeState = { weekStart: startOfWeekMonday(startOfToday()), selected: startOfToday() };
 
+  // Home is the boot tab, so it is the one place where the wait is the
+  // first thing you see. It paints last launch's data immediately when
+  // there is any, then repaints with the real answer — the requests still
+  // go out every time, this only decides what is on screen while they fly.
+  //
+  // Calendar and My Bookings deliberately don't do this: by the time either
+  // is opened, Home's own revalidation has already filled the in-memory
+  // cache they read, so they are fast for free and a second stale-paint
+  // path would be complexity with nothing to buy.
   async function renderHome(token) {
     homeState.weekStart = startOfWeekMonday(startOfToday());
     homeState.selected = startOfToday();
+
+    const stale = (!cache.events || !cache.bookings) ? readPersisted() : null;
+    if (stale && stale.events && stale.bookings && token === ui.activeToken) {
+      ui.contentEl.replaceChildren(buildHomePage(stale.events, stale.bookings));
+    }
 
     const userId = await resolveUserId();
     const [events, bookings] = await Promise.all([
@@ -2104,8 +2258,16 @@
     ]);
     cache.events = events;
     cache.bookings = bookings;
+    writePersisted({ events, bookings });
     if (token !== ui.activeToken) return;
 
+    // homeState is deliberately not reset here: if a day was tapped on the
+    // strip while the fetch was in flight, the repaint keeps that choice
+    // rather than yanking the view back to today under the finger.
+    ui.contentEl.replaceChildren(buildHomePage(events, bookings));
+  }
+
+  function buildHomePage(events, bookings) {
     const page = el('div', { class: 'fr-page' });
     const title = el('h1', { class: 'fr-page-title', text: dayLabel(homeState.selected) });
     const stripWrap = el('div', {});
@@ -2200,7 +2362,7 @@
       page.appendChild(bookingsSection);
     }
 
-    ui.contentEl.replaceChildren(page);
+    return page;
   }
 
   // Entry point. `npm run build` bundles everything reachable from here into

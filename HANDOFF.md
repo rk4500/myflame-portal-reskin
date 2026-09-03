@@ -642,3 +642,58 @@ Phone reconnected over wireless debugging (`adb connect`, Xiaomi 23127PN0CG / `h
 Worth noting for next time: `adb logcat` had already rolled past the launch by the time it was read, so the `[flame-inject]` lines were not captured. Not worth force-stopping a working app to chase them — nothing else injects the reskin, so the UI rendering *is* the evidence the hook fired. Clear the buffer *before* launching if the log lines themselves are wanted.
 
 The `v2026.09.03.2` release was cut from `master` before this branch, so it ships the same code, just built by hand. Branch merged to `master` with `--no-ff` as `cae8696`; `build-split` kept, not deleted.
+
+## Cold-launch: white Salesforce loaders removed with a native cover (2026-09-04)
+
+A screen recording of a cold launch showed three loading phases before the reskin: the RN splash, then **two white Salesforce "Loading…" cards**, then our own dark spinner. About 7.75s to content, of which ~1.75s was white flashes and ~1.1s was our spinner.
+
+### What ships
+
+- **A native boot cover.** An opaque `FrameLayout` tinted `--bg` (`0xFF11131A`) with a centred indeterminate `ProgressBar` tinted `--accent` (`0xFF5B8CFF`), added to the `DecorView` in the `setWebViewClient` hook — the same place, and for the same reason, as the existing `setBackgroundColor(DARK_BG)`. Removed once `#flame-reskin-root` exists. `setClickable(true)` so taps can't reach a live portal nobody can see.
+- **Cached first paint on Home** (`src/persist.js`). Last launch's events and bookings are kept in `localStorage['flame-data-cache']` and painted immediately, then repainted from the network. Home is the boot tab and the only one that needs it — by the time Calendar or My Bookings is opened, Home's own revalidation has filled the in-memory cache they read.
+- **Cached aura credentials.** `aura.context` and `aura.token` persist in `localStorage['flame-aura-auth']` and are tried straight away on the next launch, with one silent retry against a freshly sniffed token if the stored one is dead. Measured basis: two separately captured HAR sessions share a token, so it survives page loads.
+
+Result on-device: cover up for ~3.2s, removed 87ms after injection. No white at any point.
+
+### Why CSS could not do this — three failed attempts, all the same shape
+
+Injecting a `<style>` that hides `body > *` and paints the page dark, at `onPageStarted`, then at `onPageCommitVisible`, then on a 100ms re-apply loop. Each was better and none worked, because **a style injected into a document is only as durable as that document**, and a cold launch has three of them:
+
+1. the SSO bounce `frontdoor.jsp`,
+2. **the same page after it rewrites itself** to render Salesforce's own "Loading…" card — this is the one that replaces `<head>` and throws the style away,
+3. finally `/s/`.
+
+A re-apply loop can only shorten the flash to one tick: the wipe and the repair are always in that order. The user's own framing is what settled it — `setBackgroundColor` survives because it is *native*, so the fix belongs at the same layer, above the WebView where no document can reach it.
+
+Note the page is only ever **hidden, never blocked**. It loads completely and normally behind the cover, which is what keeps the stock-UI long-press honest: revealing it shows a live, fully-loaded page rather than a blank one.
+
+### Traps found the hard way — do not re-try these
+
+- **`requestAnimationFrame` will not fire under an opaque native cover.** Two nested rAFs is the correct way to wait for a paint in a browser, and it deadlocked here: Android can skip drawing a fully obscured WebView, so no frames are produced and the callback never runs. The reveal was waiting on a paint the cover itself was preventing. Use existence plus a bounded give-up instead.
+- **Frida's `setTimeout` does not reliably fire when called from inside a Java callback.** A 150ms grace scheduled from within `ValueCallback.onReceiveValue` (which runs on Android's main thread, not Frida's JS thread) never ran, and the cover hung with an empty log.
+- **`evaluateJavascript(js, null)` reports neither success nor failure.** Three builds were shipped blind because every `catch` around it was empty. Registering a real `ValueCallback` that returns a status string — readyState, URL, body child count, computed background — is what finally located the fault, and it took one build to do what three guesses had not. **Instrument before the second attempt, not the fourth.** Both failure paths now log.
+
+### Tried and rejected: injecting at `onPageStarted`
+
+Injecting the whole reskin ~1.5s earlier works and was reverted anyway.
+
+- Measured `onPageStarted` → `onPageFinished` on `/s/` across three launches: 1.383s, 1.508s, 1.644s. Actual saving was smaller — 3432ms → 2884ms of cover time, **548ms** — because the reskin only paints at `DOMContentLoaded`, 1.18s after injection.
+- **It buys nothing visible.** Behind the cover, ready at 2.9s or 3.4s looks identical. The parts that *are* visible were already taken by the two caches.
+- It costs a second injection point, a delivery guard, and double-boot semantics. The guard cannot live inside the script: rollup hoists every module body into one IIFE, so `aura.js`'s `fetch`/`XHR` patching (built line 171) runs long before any flag check in `main.js` (line 2405) — a second run wraps our own wrapper. The guard has to wrap the delivery instead.
+
+Kept for the record because the reasoning about *why* it does not pay is the useful part.
+
+### Also settled: what the reskin actually needs from Aura
+
+Not its UI — but not nothing, either. `aura.context` **is** in the bootstrap HTML; the **token is not** (searched all 399KB — it is a 334-char `{"nonce":…}` blob that only exists because Aura's own JS fetches it). So Aura must run; we just never have to look at it. A HAR puts the page's first tokened request at **+0.297s** after the document loads, so auth is available almost immediately — the second loader completing is irrelevant to it.
+
+### Harness
+
+- `?auto=wrapcheck` (+`-week`/`-cancel`/`-confirm`/`-sched`) — line counts from `Range` client rects, plus an overflow half.
+- `?long=1` — pathological strings for the above.
+- `?auto=calfit` — calendar block content height vs box height.
+- `?auto=coldpaint` with `?slow=<ms>` and `?seed=persisted` — proves the stale paint *and* the repaint: in-flight shows `STALE …`, settled shows the real name.
+- `?auto=sched-rule`, `?auto=sched-rule-cross`, `?seed=twin`, `?auto=authstate`.
+- `<pre id="errors">` on every scenario, trapping `onerror`/`unhandledrejection`/`console.error`.
+
+**Not committed until this entry**: everything above. **The `v2026.09.03.2` release predates all of it.**
