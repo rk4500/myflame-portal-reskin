@@ -1752,7 +1752,7 @@
                 confirmingCancel = true;
                 slotBtn.classList.add('is-confirming-cancel');
                 const cap = slotBtn.querySelector('.fr-slot-cap');
-                if (cap) cap.textContent = 'Tap to Stop';
+                if (cap) cap.textContent = 'Tap again to stop';
 
                 setTimeout(() => {
                   if (confirmingCancel) document.addEventListener('click', handleOutsideClick);

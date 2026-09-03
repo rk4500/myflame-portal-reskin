@@ -784,7 +784,7 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
 ### 5. Input Placeholder & Two-Tap Autobook Cancel Confirmation
 - **Placeholder Cleanup**: Removed `(optional)` from `Purpose` and `Co-attendee` input field placeholders for Classrooms and Conference Rooms, displaying clean `Purpose` and `Co-attendee` labels.
 - **Two-Tap Autobook Cancel Flow (`is-confirming-cancel`)**:
-  - Tapping a scheduled autobook slot (`Auto-booking ✓`) changes its state to `.is-confirming-cancel` with a danger tint and caption **`Tap to Stop`**.
+  - Tapping a scheduled autobook slot (`Auto-booking ✓`) changes its state to `.is-confirming-cancel` with a danger tint and caption **`Tap again to stop`**.
   - A 3-second auto-reset timer is initiated. If untapped for 3 seconds, the tile automatically resets back to `Auto-booking ✓`.
   - Tapping anywhere else on the screen (outside click listener) immediately cancels the prompt and restores the tile state.
   - Tapping the tile a second time while in `is-confirming-cancel` state confirms intent removal (`removeIntent`) and refreshes availability.
