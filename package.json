@@ -1,0 +1,14 @@
+{
+  "name": "myflame-portal-reskin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Custom frontend for FLAME University's student portal",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "rollup": "^4.63.1"
+  }
+}

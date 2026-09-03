@@ -22,6 +22,26 @@
   ORIGINAL PORTAL CONTENT (should be hidden once the reskin boots)
 </div>
 <script>
+  // Every uncaught error and rejection is recorded and rendered into
+  // #errors at the end of the run, so `--dump-dom` sees them. A headless
+  // screenshot cannot show a thrown ReferenceError: the tab just renders
+  // empty or half-built, which reads as a styling problem. This is how a
+  // missing import in src/ surfaces as an actual failure instead.
+  window.__FLAME_ERRORS__ = [];
+  window.addEventListener('error', (e) => {
+    window.__FLAME_ERRORS__.push(`${e.message} @ ${e.filename}:${e.lineno}`);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    window.__FLAME_ERRORS__.push(`unhandled rejection: ${e.reason && e.reason.message || e.reason}`);
+  });
+  const __origError = console.error.bind(console);
+  console.error = (...args) => {
+    window.__FLAME_ERRORS__.push(args.map(String).join(' '));
+    __origError(...args);
+  };
+</script>
+
+<script>
   // Set before portal-reskin.user.js runs so it boots straight into this
   // tab — a single switchTab() call, not two racing ones.
   window.__FLAME_RESKIN_INITIAL_TAB__ = new URLSearchParams(location.search).get('tab') || 'home';
@@ -247,9 +267,24 @@
   window.addEventListener('load', async () => {
     const auto = new URLSearchParams(location.search).get('auto');
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    // Always dump whatever the error trap caught, whichever scenario ran.
+    const dumpErrors = () => {
+      const pre = document.createElement('pre');
+      pre.id = 'errors';
+      pre.textContent = window.__FLAME_ERRORS__.length
+        ? window.__FLAME_ERRORS__.join('\n')
+        : 'no errors';
+      document.body.appendChild(pre);
+    };
+    setTimeout(dumpErrors, 2500);
     if (auto === 'book-confirm' || auto === 'book-confirm-fail') {
-      await wait(400); // availability now auto-loads, just wait for it then pick a slot
-      document.querySelector('.fr-slot:not(:disabled)').click();
+      // Step to tomorrow before picking: today's gym window has usually
+      // closed by the time this is run, leaving no bookable slot at all
+      // (the same clock-dependence ?seed=due used to have).
+      await wait(400);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(500);
+      document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)').click();
     }
     if (auto === 'book-confirm-fail') {
       await wait(200);
@@ -261,9 +296,12 @@
       // Conference Rooms to check the purpose/co-attendee fields render
       // (and are readable) for a resource type that actually needs them.
       await wait(200);
-      [...document.querySelectorAll('.fr-facility-item')].find((b) => b.textContent === 'Conference Rooms').click();
-      await wait(400);
-      document.querySelector('.fr-slot:not(:disabled)').click();
+      // startsWith, not ===: ?long=1 lengthens the facility names.
+      [...document.querySelectorAll('.fr-facility-item')].find((b) => b.textContent.startsWith('Conference Rooms')).click();
+      await wait(200);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(500);
+      document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)').click();
     }
     if (auto === 'resource-picker-open') {
       await wait(200);
@@ -273,7 +311,7 @@
       // Class Rooms has 13 resources — overflows the panel's 280px
       // max-height, actually triggering the scrollbar this is testing.
       await wait(200);
-      [...document.querySelectorAll('.fr-facility-item')].find((b) => b.textContent === 'Class Rooms').click();
+      [...document.querySelectorAll('.fr-facility-item')].find((b) => b.textContent.startsWith('Class Rooms')).click();
       await wait(200);
       document.querySelector('.fr-picker-btn').click();
     }

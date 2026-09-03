@@ -1,0 +1,543 @@
+#flame-reskin-root, #flame-reskin-root * { box-sizing: border-box; }
+/* An author rule setting display: (e.g. .fr-confirm-panel { display: flex }) beats
+   the UA [hidden]{display:none} rule at equal specificity — restore it explicitly,
+   otherwise setting .hidden = true silently does nothing on any styled element. */
+#flame-reskin-root [hidden] { display: none !important; }
+
+#flame-reskin-root {
+  /* Default via CSS env() for browsers/PWAs that populate it (0 elsewhere,
+     e.g. desktop). The Android app's native hook overrides this at runtime
+     with a precisely-measured value, since this WebView doesn't reliably
+     populate env(safe-area-inset-bottom) on its own. */
+  --flame-navbar-inset: env(safe-area-inset-bottom, 0px);
+  --bg: #11131a;
+  --bg-elevated: #1a1e28;
+  --bg-elevated-2: #232838;
+  --border: #2b3040;
+  --text: #eef0f6;
+  --text-secondary: #96a0b8;
+  --accent: #5b8cff;
+  --accent-hover: #71a0ff;
+  --accent-text: #0d1220;
+  --danger: #e0836f;
+  --danger-bg: #3a241f;
+  --success: #7fc98a;
+  --success-bg: #1c2f22;
+
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+#flame-reskin-root a { color: var(--accent); }
+#flame-reskin-root ::selection { background: var(--accent); color: var(--accent-text); }
+#flame-reskin-root *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+#flame-reskin-root ::-webkit-scrollbar { width: 10px; height: 10px; }
+#flame-reskin-root ::-webkit-scrollbar-track { background: transparent; }
+#flame-reskin-root ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+#flame-reskin-root ::-webkit-scrollbar-thumb:hover { background: var(--bg-elevated-2); }
+#flame-reskin-root * { scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+
+/* Top bar on desktop (mobile repositions this same markup into a bottom
+   tab bar — see the media query). A vertical sidebar with a colored-square
+   "FL" mark stacked over a name in the top-left corner is, structurally,
+   the exact shape of every app's account switcher; the same mark inline in
+   a horizontal bar just reads as a logo. */
+.fr-nav {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 48px; /* matches .fr-content's left/right padding, so the bar's edges line up with the page content below it */
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fr-brand { display: flex; align-items: center; gap: 8px; padding-right: 20px; margin-right: 4px; border-right: 1px solid var(--border); }
+.fr-brand-mark { color: var(--accent); width: 22px; height: 22px; }
+.fr-brand-name { font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
+.fr-nav-list { display: flex; align-items: center; gap: 4px; }
+.fr-nav-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 8px;
+  background: transparent; border: none;
+  color: var(--text-secondary); font: inherit; font-weight: 500; font-size: 0.875rem;
+  cursor: pointer; text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.fr-nav-btn:hover { background: var(--bg-elevated); color: var(--text); }
+.fr-nav-btn.is-active { background: var(--bg-elevated-2); color: var(--text); }
+.fr-nav-btn.is-active .icon { color: var(--accent); }
+/* Mobile-only long-press-to-switch-to-stock feedback on the Home tab (see
+   attachHomeLongPress()) — a slow fill exactly matching the hold duration,
+   so releasing early visibly "un-fills" instead of just snapping off.
+   Harmless if ever triggered on desktop by a mouse-down; nothing reads it. */
+.fr-nav-btn.is-pressing { background: var(--bg-elevated-2); transition: background-color 550ms ease; }
+/* The one action in the bar that isn't navigation — pushed to the far
+   opposite end from the brand mark so it reads as a utility, not a tab.
+   Desktop only; mobile switches via a Home long-press instead (no room
+   for a 6th icon in the bottom tab bar). */
+.fr-nav-toggle {
+  margin-left: auto; flex-shrink: 0;
+  background: transparent; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-secondary); font: inherit; font-weight: 500; font-size: 0.8125rem;
+  padding: 7px 12px; cursor: pointer; transition: border-color 120ms ease, color 120ms ease;
+}
+.fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
+
+.fr-content { flex: 1; overflow-y: auto; padding: 40px 48px 80px; display: flex; justify-content: center; align-items: flex-start; }
+.fr-page { max-width: 1320px; width: 100%; animation: fr-fade-in 180ms ease-out; }
+@keyframes fr-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.fr-page-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 24px; }
+
+.icon { width: 20px; height: 20px; display: inline-flex; flex-shrink: 0; }
+.icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+.fr-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 96px 0; color: var(--text-secondary); }
+.fr-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: fr-spin 700ms linear infinite; }
+@keyframes fr-spin { to { transform: rotate(360deg); } }
+
+.fr-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 64px 24px; color: var(--text-secondary); }
+.fr-empty-icon { width: 32px; height: 32px; color: var(--text-secondary); opacity: 0.6; margin-bottom: 4px; }
+.fr-empty-title { font-weight: 600; color: var(--text); margin: 0; }
+.fr-empty-text { margin: 0; font-size: 0.875rem; }
+.fr-empty--error { color: var(--danger); }
+.fr-empty--error .fr-empty-title { color: var(--danger); }
+.fr-empty--inline { padding: 32px 16px; }
+
+.fr-day-group { margin-bottom: 32px; }
+.fr-group-heading {
+  font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-secondary); margin: 0 0 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-group-heading-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 12px; }
+.fr-link-btn {
+  font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--accent);
+  background: none; border: none; padding: 0; cursor: pointer;
+}
+
+.fr-list { display: flex; flex-direction: column; gap: 8px; }
+.fr-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: var(--bg-elevated); border-radius: 12px; padding: 14px 16px;
+}
+/* Every row in a list has to be the same height. A long class title, or a
+   "Wednesday, Sep 10 - 10:00 AM - 11:00 AM" meta line, used to wrap onto a
+   second line and grow its own box, which reads as "this class runs
+   longer" when it only means "this name is longer". Both lines are single
+   line + ellipsis now, and .fr-row-main shrinks (min-width:0) rather than
+   shoving the pill/button off the edge. */
+.fr-row-main { flex: 1; min-width: 0; }
+.fr-row-title { margin: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-row-meta {
+  margin: 4px 0 0; font-size: 0.8125rem; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* A class row with no room/faculty still has to reserve the meta line's
+   height, or it sits shorter than its neighbours. */
+.fr-row-meta:empty::before { content: '\00a0'; }
+.fr-row-time { font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 78px; white-space: nowrap; }
+/* Status pill + cancel button share one right-hand column, so mobile can
+   collapse them together. */
+.fr-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.fr-badge { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.fr-badge.is-booked { background: var(--success-bg); color: var(--success); }
+.fr-badge.is-cancelled { background: var(--bg-elevated-2); color: var(--text-secondary); }
+
+.fr-cancel-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Cancel confirmation. Three earlier attempts all failed the same way —
+   they added something to the row (a question string, an overlay, a drawer)
+   and then had to find room for it. This one adds nothing: the row's own
+   title becomes the question ("Gym" -> "Cancel Gym?"), so the object being
+   cancelled is named exactly once, in the place already reading as its
+   name, and the only new pixels are one extra button. Nothing expands,
+   nothing is covered, every row in the list keeps the same height. */
+.fr-row.is-confirming {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
+}
+.fr-row.is-confirming .fr-row-title { color: var(--danger); }
+.fr-row, .fr-row-title { transition: background-color 140ms ease, color 140ms ease; }
+
+.fr-btn {
+  font: inherit; font-weight: 600; border-radius: 9px; padding: 9px 16px;
+  border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+.fr-btn:disabled { opacity: 0.5; cursor: default; }
+.fr-btn--primary { background: var(--accent); color: var(--accent-text); }
+.fr-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+.fr-btn--secondary { background: var(--bg-elevated-2); color: var(--text); }
+.fr-btn--secondary:hover:not(:disabled) { background: #2b3143; }
+.fr-btn--ghost { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+.fr-btn--ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text-secondary); }
+.fr-btn--danger { background: var(--danger); color: #241512; }
+.fr-btn--sm { padding: 6px 12px; font-size: 0.8125rem; }
+.fr-btn--icon { padding: 8px; line-height: 0; }
+
+.fr-input, .fr-select {
+  font: inherit; color: var(--text); background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; width: 100%;
+}
+.fr-input:focus, .fr-select:focus { border-color: var(--accent); }
+/* No rule here previously meant placeholders fell back to the browser's
+   default (near-black) placeholder color on this dark input background —
+   effectively invisible. */
+.fr-input::placeholder { color: var(--text-secondary); opacity: 1; }
+
+/* Custom picker — replaces a native <select> (the Resource dropdown),
+   which renders as the platform's own picker UI (a full-screen wheel on
+   Android WebView) with none of the reskin's styling. */
+.fr-picker { position: relative; }
+.fr-picker-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font: inherit; color: var(--text); background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
+  cursor: pointer; text-align: left; transition: border-color 120ms ease;
+}
+.fr-picker-btn:hover { border-color: var(--text-secondary); }
+.fr-picker.is-open .fr-picker-btn { border-color: var(--accent); }
+.fr-picker-btn-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-picker-btn .icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--text-secondary); transition: transform 120ms ease; }
+.fr-picker.is-open .fr-picker-btn .icon { transform: rotate(180deg); }
+/* Split into an outer frame (owns the border/radius/shadow, clips via
+   overflow:hidden) and an inner scroll list (owns overflow-y:auto) rather
+   than putting both the radius and the scrolling on one element — a
+   scrolling element's own border-radius isn't reliably clipped against its
+   scrollbar on every renderer (confirmed broken on Android WebView: the
+   right corners squared off under the native scrollbar track, invisible
+   in desktop testing since desktop's custom-styled scrollbar doesn't
+   expose the same gap). overflow:hidden on a non-scrolling ancestor clips
+   unconditionally regardless of how the descendant's own scrollbar renders. */
+.fr-picker-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20;
+  background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+  display: none;
+}
+.fr-picker.is-open .fr-picker-panel { display: block; }
+.fr-picker-list { padding: 4px; max-height: 280px; overflow-y: auto; }
+.fr-picker-option {
+  display: block; width: 100%; text-align: left; font: inherit; color: var(--text); font-size: 0.9375rem;
+  background: transparent; border: none; border-radius: 7px; padding: 9px 10px;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-picker-option:hover { background: var(--bg-elevated); }
+.fr-picker-option.is-selected { color: var(--accent); font-weight: 600; }
+
+/* Day navigator (Calendar + Book Slot share this) */
+.fr-daynav { display: flex; align-items: center; gap: 6px; }
+.fr-daynav-label { font-weight: 600; font-size: 0.9375rem; flex: 1; text-align: center; white-space: nowrap; }
+.fr-daynav-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text);
+  cursor: pointer;
+}
+.fr-daynav-btn:hover:not(:disabled) { background: var(--bg-elevated-2); }
+.fr-daynav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Calendar grid */
+.fr-cal-header {
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "title title" "nav toggle";
+  align-items: center; gap: 12px 16px; margin-bottom: 20px;
+}
+.fr-cal-header-title { grid-area: title; margin: 0; }
+.fr-cal-header-nav { grid-area: nav; min-width: 0; }
+.fr-cal-header-nav .fr-datestrip { margin: 0; }
+.fr-cal-header-toggle { grid-area: toggle; }
+.fr-view-toggle { display: flex; background: var(--bg-elevated); border-radius: 9px; padding: 3px; gap: 2px; flex-shrink: 0; }
+.fr-view-toggle button {
+  padding: 6px 14px; border-radius: 7px; background: transparent; border: none;
+  color: var(--text-secondary); font: inherit; font-weight: 600; font-size: 0.8125rem; cursor: pointer;
+}
+.fr-view-toggle button.is-active { background: var(--bg-elevated-2); color: var(--text); }
+
+/* Same split as .fr-picker-panel: the frame owns the border/radius and
+   clips unconditionally via overflow:hidden; the scroll happens on a
+   separate inner element instead of on the radius-bearing one itself
+   (unreliable on Android WebView — right corners squared off under the
+   scrollbar, invisible in desktop testing). */
+.fr-cal-wrap { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.fr-cal-scroll { display: flex; overflow-x: auto; }
+.fr-cal-gutter { width: 52px; flex-shrink: 0; border-right: 1px solid var(--border); }
+.fr-cal-gutter-header { height: 40px; border-bottom: 1px solid var(--border); }
+.fr-cal-hour-label {
+  height: var(--fr-hour-h); font-size: 0.6875rem; color: var(--text-secondary);
+  text-align: right; padding-right: 8px; position: relative;
+}
+/* Straddles the gridline above it (like most calendar apps: the label
+   marks the line, not the row) — except the very first label, which has
+   no row above it to straddle into and would otherwise overlap the
+   day-header instead. overflow:hidden here (not on every label) clips
+   only that one case without cutting off every other label's top half. */
+.fr-cal-hour-label span { position: absolute; top: -7px; right: 8px; }
+.fr-cal-hour-label--first { overflow: hidden; }
+.fr-cal-hour-label--first span { top: 1px; }
+.fr-cal-days { flex: 1; display: grid; }
+.fr-cal-day-col { position: relative; border-right: 1px solid var(--border); }
+.fr-cal-day-col:last-child { border-right: none; }
+.fr-cal-day-header {
+  height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+  white-space: nowrap;
+}
+.fr-cal-day-header.is-today { color: var(--accent); }
+.fr-cal-hour-row { height: var(--fr-hour-h); border-bottom: 1px solid var(--border); }
+.fr-cal-body { position: relative; }
+.fr-cal-now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 2; }
+.fr-cal-now-line::before {
+  content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--accent);
+}
+.fr-cal-event {
+  position: absolute; left: 3px; right: 3px; border-radius: 7px; padding: 4px 8px;
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  font-size: 0.75rem; line-height: 1.3; cursor: default;
+  overflow: hidden;
+}
+/* The venue used to be the one line allowed to wrap, on the theory that a
+   long room name should grow the block rather than lose characters. It
+   grows it into the block below: a calendar block's height is its
+   duration, so any extra line is an overlap, and "Chandragupta - Focus
+   Room 201 W" is a real room name. Every line in the block is bounded now
+   (venue and professor to one line, the course title to two), and the
+   block itself clips — the full text is on the block's title attribute. */
+.fr-cal-event-venue {
+  font-weight: 600; color: var(--accent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-cal-event-title {
+  font-weight: 600; margin-top: 1px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fr-cal-event-meta {
+  color: var(--text-secondary); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Home dashboard — week-strip date picker above the classes list */
+.fr-datestrip { display: flex; align-items: center; gap: 8px; margin: 4px 0 28px; }
+.fr-datestrip-cells { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.fr-datestrip-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 4px; border-radius: 10px; background: var(--bg-elevated);
+  border: 1px solid transparent; color: var(--text-secondary); font: inherit; cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.fr-datestrip-cell:hover { background: var(--bg-elevated-2); }
+.fr-datestrip-cell.is-today {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  border-color: var(--accent); color: var(--text);
+}
+.fr-datestrip-cell.is-today .fr-datestrip-daynum { color: var(--accent); }
+.fr-datestrip-cell.is-selected { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.fr-datestrip-cell.is-selected .fr-datestrip-daynum { color: inherit; }
+.fr-datestrip-weekday { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.8; white-space: nowrap; }
+.fr-datestrip-daynum { font-size: 1.0625rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fr-datestrip-dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.fr-datestrip-dot.is-empty { visibility: hidden; }
+
+/* Facility rail + slot layout (Book Slot) */
+/* minmax(0, ...) on both tracks, not plain 1fr: a grid track's default
+   minimum is min-content, so a single unbreakable child — a facility name
+   that no longer wraps — widens its column past the viewport and takes the
+   whole page sideways with it. Caught by ?auto=wrapcheck's overflow half. */
+.fr-book-layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 32px; align-items: start; }
+.fr-facility-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.fr-facility-item {
+  display: block; width: 100%; text-align: left; font: inherit; font-weight: 500;
+  padding: 10px 12px; border-radius: 9px; background: transparent; border: none;
+  color: var(--text-secondary); cursor: pointer; transition: background-color 120ms ease, color 120ms ease;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-facility-item:hover { background: var(--bg-elevated); color: var(--text); }
+.fr-facility-item.is-active { background: var(--accent); color: var(--accent-text); }
+.fr-book-field { margin-bottom: 16px; }
+.fr-book-field-label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-book-results-title { font-weight: 600; margin: 0 0 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.fr-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.fr-slot {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; cursor: pointer; text-align: left; font: inherit; color: var(--text);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.fr-slot:hover:not(:disabled) { border-color: var(--text-secondary); }
+.fr-slot.is-selected { border-color: var(--accent); background: var(--bg-elevated-2); }
+.fr-slot:disabled { opacity: 0.4; cursor: not-allowed; }
+.fr-slot-time { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.fr-slot-cap { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* A slot the portal hasn't opened yet: real, dated, and schedulable, but
+   not bookable now — dashed to say "not yet" without inventing a colour. */
+.fr-slot--later { border-style: dashed; color: var(--text-secondary); }
+.fr-slot--later .fr-slot-time { color: var(--text); }
+.fr-slot--later:hover { border-color: var(--text-secondary); }
+.fr-slot--later.is-scheduled { border-style: solid; border-color: var(--accent); }
+.fr-slot--later.is-scheduled .fr-slot-cap { color: var(--accent); }
+
+.fr-sched { margin-top: 28px; }
+.fr-sched-title {
+  font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-secondary); margin: 0 0 12px;
+}
+.fr-sched-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--border);
+}
+.fr-sched-main { min-width: 0; }
+.fr-sched-name, .fr-sched-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-sched-name { margin: 0; font-weight: 600; font-size: 0.875rem; }
+.fr-sched-note { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+/* Auto-booking results land while you are somewhere else in the app, so
+   they are announced above whatever tab is open rather than buried in the
+   one that caused them. */
+.fr-banner-host { padding: 12px 48px 0; }
+.fr-banner-host:empty { display: none; }
+.fr-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+}
+.fr-banner.is-good { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); background: var(--success-bg); }
+.fr-banner.is-bad { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); background: var(--danger-bg); }
+.fr-banner-main { min-width: 0; }
+.fr-banner-title {
+  margin: 0; font-weight: 600; font-size: 0.875rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-banner.is-good .fr-banner-title { color: var(--success); }
+.fr-banner.is-bad .fr-banner-title { color: var(--danger); }
+/* Deliberately the one line here that still wraps: it carries the
+   portal's own refusal text verbatim, and a truncated reason is worse
+   than a two-line banner. The banner is a single full-width element with
+   nothing beside it to knock out of alignment. */
+.fr-banner-note { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+.fr-confirm-panel {
+  margin-top: 24px; padding: 20px; background: var(--bg-elevated); border-radius: 14px;
+  display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end;
+}
+.fr-confirm-panel-title { grid-column: 1 / -1; font-weight: 600; margin: 0 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-success-panel { background: var(--success-bg); color: var(--success); border-radius: 10px; padding: 14px 16px; font-weight: 500; margin-top: 24px; }
+/* createReservation returns state:SUCCESS with a plain message string even
+   when the booking was refused (e.g. "More than 1 bookings are not allowed
+   for selected resource.") — the try/catch never fires for that case, so
+   this panel exists to show refusals as refusals instead of green success. */
+.fr-error-panel { background: var(--danger-bg); color: var(--danger); border-radius: 10px; padding: 14px 16px; font-weight: 500; margin-top: 24px; }
+.fr-error-text { color: var(--danger); }
+
+/* Gyan chat tab */
+.fr-gyan-page { display: flex; flex-direction: column; height: 100%; min-height: 0; max-width: 720px; }
+.fr-gyan-messages { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; }
+/* A short exchange used to sit flush against the header, leaving a dead
+   gap down to the composer — the opposite of every chat convention, where
+   the live edge of the conversation stays anchored next to the input. The
+   auto margin hugs the list to the bottom when it's shorter than the
+   viewport and steps out of the way once real content overflows, so
+   scrolling still works normally for a long conversation. The empty/
+   welcome state is a different kind of content (an explanation, not a
+   conversation) and gets centered instead, not bottom-anchored. */
+.fr-gyan-list { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+.fr-gyan-messages > .fr-empty { margin: auto 0; }
+.fr-gyan-msg { display: flex; }
+.fr-gyan-msg--user { justify-content: flex-end; }
+.fr-gyan-msg--assistant { justify-content: flex-start; }
+.fr-gyan-bubble {
+  max-width: 75%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap;
+  word-break: break-word; line-height: 1.45;
+}
+.fr-gyan-msg--user .fr-gyan-bubble { background: var(--accent); color: var(--accent-text); }
+.fr-gyan-msg--assistant .fr-gyan-bubble { background: var(--bg-elevated); color: var(--text); }
+.fr-gyan-typing { color: var(--text-secondary); font-style: italic; }
+.fr-gyan-composer { display: flex; gap: 10px; margin-top: 16px; flex-shrink: 0; }
+.fr-gyan-composer .fr-input { flex: 1; }
+
+/* The off-state fallback: only ever visible while the reskin itself is
+   off, at which point #flame-reskin-root (and every in-shell control) is
+   hidden entirely — nothing of ours is ever on screen at the same time, so
+   this one genuinely can't collide with anything regardless of viewport or
+   which tab was last open. Hidden by default; body.flame-reskin-off is the
+   only thing that ever shows it. */
+#flame-reskin-toggle {
+  display: none;
+}
+body.flame-reskin-off #flame-reskin-toggle {
+  display: block;
+  position: fixed; left: 16px; bottom: 16px; z-index: 2147483647;
+  background: #1a1e28; color: #eef0f6; border: 1px solid #2b3040;
+  border-radius: 999px; padding: 8px 16px; font: 600 12px ui-sans-serif, -apple-system, sans-serif;
+  cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+#flame-reskin-toggle:hover { background: #232838; }
+
+@media (max-width: 760px) {
+  .fr-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: auto; height: 68px;
+    border-right: none; border-top: 1px solid var(--border); border-bottom: none;
+    padding: 8px 8px calc(8px + var(--flame-navbar-inset)); background: var(--bg); align-items: center; z-index: 5;
+    height: calc(68px + var(--flame-navbar-inset));
+  }
+  .fr-brand, .fr-nav > .fr-nav-toggle { display: none; }
+  .fr-nav-list { flex: 1; justify-content: space-around; }
+  .fr-nav-btn { flex-direction: column; gap: 4px; padding: 6px 10px; }
+  .fr-nav-label { font-size: 0.6875rem; }
+  .fr-content { padding: 12px 20px calc(96px + var(--flame-navbar-inset)); }
+  .fr-banner-host { padding: 12px 20px 0; }
+  .fr-book-layout { grid-template-columns: minmax(0, 1fr); }
+  .fr-datestrip { gap: 4px; }
+  .fr-datestrip-cells { gap: 4px; }
+  .fr-datestrip-cell { padding: 8px 0; }
+  .fr-datestrip-weekday { font-size: 0.625rem; }
+  .fr-datestrip-daynum { font-size: 0.9375rem; }
+  .fr-daynav-btn { width: 28px; height: 28px; }
+  /* .fr-row's justify-content:space-between shoves fr-row-main to the far
+     right edge on class-schedule rows (only 2 children: time + main) —
+     reads fine on a wide desktop row but leaves an ugly gap on mobile's
+     narrower rows. Scoped to rows with a .fr-row-time child specifically
+     (only class-schedule rows have one) so booking rows — which rely on
+     space-between to push their status pill/cancel button to the right —
+     are untouched. */
+  .fr-row:has(.fr-row-time) { justify-content: flex-start; }
+  /* Day/week toggle moves up next to the title; the day-nav/date-strip
+     gets its own full-width row below (same grid, different areas). */
+  .fr-cal-header { grid-template-areas: "title toggle" "nav nav"; }
+  /* Wider floor than the old 130px: "11 AM - 12 PM" has to fit on one
+     line, or the trailing meridiem wraps and that one tile grows taller
+     than the rest of the grid. Two columns still fit a 360px viewport. */
+  .fr-slot-grid { grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); }
+  .fr-slot { padding: 11px 12px; }
+  .fr-slot-time { font-size: 0.9375rem; }
+  .fr-row { gap: 10px; padding: 12px 14px; }
+  /* A narrow row can't afford both a status pill and a Cancel button, and
+     doesn't need both: the button only ever renders on a booked
+     reservation, so the pill next to it is restating the obvious. Dropping
+     it buys the title/time line ~70px, which is the difference between
+     "Tomorrow - 9 AM - 10 AM" fitting on one line and wrapping. */
+  .fr-row-actions:has(.fr-cancel-wrap) .fr-badge { display: none; }
+  /* Both answers stay short enough that the row's time line survives at
+     360px; see attachCancelConfirm for why the safe one sits on the right. */
+  .fr-cancel-wrap { gap: 6px; }
+  /* Week view: .fr-cal-scroll (always overflow-x:auto) lets the grid
+     scroll horizontally at a readable column width instead of squeezing 7
+     days into the viewport — the JS gives .fr-cal-days a min-width in
+     week mode to force this. */
+  .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
+  .fr-confirm-panel { grid-template-columns: 1fr; }
+}
