@@ -802,5 +802,11 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   - `16:00 - 18:59`: Prompts **Snacks today** & **Dinner tonight**.
   - `19:00 - 23:59`: Prompts **Dinner tonight** & **Tomorrow's breakfast**.
 - **Contextual Chips**: Always includes **Next class** and **Sports slots** chips alongside meal chips.
-- **One-Tap Autosend**: Tapping any chip populates the query into the composer input field and automatically submits it to Gyan instantly.
+### 8. Basic Asterisk Bold Support & Thread Disposal Guards (`gyan-updates` branch)
+- **Sanitized Bold Parsing (`parseGyanBold` & `escapeHtml`)**:
+  - Converts `**bold**` or `*bold*` to `<strong>bold</strong>` rendered in bold weight (`font-weight: 700`).
+  - *Known Limitation Note*: On certain devices/browsers, asterisk-wrapped text might not render visually bold if system font weights do not support standard 700 weight variants.
+- **In-Flight Turn Cancellation & Disabled "New chat"**:
+  - The **New chat** header button is disabled (`opacity: 0.4`, `pointer-events: none`) while Gyan is initializing or generating a response (`gyanState.sending`), preventing broken thread states.
+  - Added `gyanState.activeTurnId` counter to abort and discard stale in-flight assistant turns cleanly if a thread reset is triggered.
 

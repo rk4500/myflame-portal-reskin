@@ -94,17 +94,16 @@ function extractUserQuery(functionArgsJson) {
 }
 
 async function runGyanTurn(message) {
-  // The composer's submit handler calls runGyanTurn() directly on every
-  // send — it only went through ensureGyanReady() once, on tab mount.
-  // ensureGyanReady() already no-ops once ready, so calling it on every turn
-  // is cheap and guards against state being cleared in the future.
+  const currentTurn = (gyanState.activeTurnId = (gyanState.activeTurnId || 0) + 1);
   await ensureGyanReady();
+  if (currentTurn !== gyanState.activeTurnId) throw new Error('Gyan turn aborted');
 
   try {
     await callAura('AiAssistantWindowController', 'runModeration', { message }, false, 'vnai');
   } catch (e) {
     console.warn('[flame-reskin] gyan moderation check failed, sending anyway', e);
   }
+  if (currentTurn !== gyanState.activeTurnId) throw new Error('Gyan turn aborted');
 
   let runRequest = {
     assistantId: gyanState.assistantId,
@@ -118,6 +117,8 @@ async function runGyanTurn(message) {
   // Capped so a malformed/looping response can't hang the chat forever.
   for (let step = 0; step < 8; step++) {
     const res = await callAura('AiAssistantWindowController', 'runAssistant', { runRequest }, false, 'vnai');
+    if (currentTurn !== gyanState.activeTurnId) throw new Error('Gyan turn aborted');
+
     if (!res.requiredActions || !res.requiredActions.length) {
       return res.text || "Sorry, I didn't get a response for that.";
     }
@@ -185,6 +186,25 @@ function getSmartGyanChips() {
   return chips;
 }
 
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function parseGyanBold(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  // Double asterisks **bold**
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$2</strong>');
+  // Single asterisk *bold*
+  html = html.replace(/(^|\s)\*([^\*\n]+)\*(\s|$)/g, '$1<strong>$2</strong>$3');
+  return html;
+}
+
 export function renderGyan(token) {
   if (token !== ui.activeToken) return;
 
@@ -193,11 +213,14 @@ export function renderGyan(token) {
   headerRow.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName, style: 'margin: 0;' }));
   const newChatBtn = el('button', { class: 'fr-link-btn', type: 'button', text: 'New chat' });
   newChatBtn.addEventListener('click', async () => {
+    if (gyanState.sending || !gyanState.ready) return;
     newChatBtn.disabled = true;
+    gyanState.activeTurnId = (gyanState.activeTurnId || 0) + 1;
     const oldThreadId = gyanState.threadId;
     gyanState.messages = [];
     gyanState.threadId = null;
     gyanState.ready = false;
+    paintMessages();
     if (oldThreadId) {
       try {
         await callAura('AiAssistantWindowController', 'deleteThread', { threadId: oldThreadId }, false, 'vnai');
@@ -224,6 +247,9 @@ export function renderGyan(token) {
 
     const isLoading = !gyanState.ready || gyanState.sending;
     sendBtn.disabled = isLoading;
+    newChatBtn.disabled = isLoading;
+    newChatBtn.style.opacity = isLoading ? '0.4' : '1';
+    newChatBtn.style.pointerEvents = isLoading ? 'none' : 'auto';
     if (isLoading) {
       sendBtn.classList.add('fr-btn--loading');
       sendBtn.replaceChildren(icon('spinner'));
@@ -256,10 +282,17 @@ export function renderGyan(token) {
       messagesEl.replaceChildren(emptyWrap);
       return;
     }
+
     const list = el('div', { class: 'fr-gyan-list' });
     for (const m of gyanState.messages) {
       const row = el('div', { class: `fr-gyan-msg fr-gyan-msg--${m.role}` });
-      row.appendChild(el('div', { class: 'fr-gyan-bubble', text: m.text }));
+      const bubble = el('div', { class: 'fr-gyan-bubble' });
+      if (m.role === 'assistant') {
+        bubble.innerHTML = parseGyanBold(m.text);
+      } else {
+        bubble.textContent = m.text;
+      }
+      row.appendChild(bubble);
       list.appendChild(row);
     }
     if (gyanState.sending) {

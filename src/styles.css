@@ -577,6 +577,7 @@
   max-width: 75%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap;
   word-break: break-word; line-height: 1.45;
 }
+.fr-gyan-bubble strong, .fr-gyan-bubble b { font-weight: 700; color: var(--text); }
 .fr-gyan-msg--user .fr-gyan-bubble { background: var(--accent); color: var(--accent-text); }
 .fr-gyan-msg--assistant .fr-gyan-bubble { background: var(--bg-elevated); color: var(--text); }
 .fr-gyan-typing { color: var(--text-secondary); font-style: italic; }
