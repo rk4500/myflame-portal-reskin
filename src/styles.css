@@ -106,6 +106,48 @@
 .fr-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: fr-spin 700ms linear infinite; }
 @keyframes fr-spin { to { transform: rotate(360deg); } }
 
+/* Skeletons.
+   A skeleton is the real element with its unknown text swapped for a
+   shimmering block of the same metrics — never a lookalike built out of
+   bare divs, which is how a placeholder ends up a different height than
+   the thing it stands in for and the page jumps when data lands. The
+   block is an inline-block holding a non-breaking space, so its line box
+   is exactly one line of the parent's own type: same font, same
+   line-height, same baseline, whatever the parent happens to be.
+   Width is the only thing a caller sets, in ch, and it is a guess about
+   content length — nothing about the layout depends on it being right. */
+.fr-skel {
+  display: inline-block; vertical-align: baseline;
+  border-radius: 5px; color: transparent; user-select: none;
+  background-color: var(--bg-elevated-2);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text-secondary) 16%, transparent) 45%,
+    color-mix(in srgb, var(--text-secondary) 16%, transparent) 55%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: fr-shimmer 1400ms linear infinite;
+}
+/* Sweeps left to right. The travel is wider than the element so the band
+   spends time off both edges rather than bouncing at the boundaries. */
+@keyframes fr-shimmer {
+  from { background-position: 160% 0; }
+  to { background-position: -60% 0; }
+}
+/* A card whose contents are still unknown. It is genuinely disabled, so
+   it cannot be tapped or focused — but the 0.4 opacity that :disabled
+   carries here means "blocked" and would also dim the one thing on the
+   card that is already true, its time. Full strength, no pointer. */
+.fr-slot--skeleton { cursor: default; }
+.fr-slot--skeleton:disabled { opacity: 1; }
+.fr-slot--skeleton:hover { border-color: var(--border); }
+@media (prefers-reduced-motion: reduce) {
+  .fr-skel { animation: none; background-image: none; }
+}
+
 .fr-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 64px 24px; color: var(--text-secondary); }
 .fr-empty-icon { width: 32px; height: 32px; color: var(--text-secondary); opacity: 0.6; margin-bottom: 4px; }
 .fr-empty-title { font-weight: 600; color: var(--text); margin: 0; }
@@ -113,6 +155,9 @@
 .fr-empty--error { color: var(--danger); }
 .fr-empty--error .fr-empty-title { color: var(--danger); }
 .fr-empty--inline { padding: 32px 16px; }
+/* Sits under the empty state's own text, spaced from it rather than
+   crowding it — the offer is a next step, not part of the sentence. */
+.fr-empty-action { margin-top: 8px; }
 
 .fr-day-group { margin-bottom: 32px; }
 .fr-group-heading {

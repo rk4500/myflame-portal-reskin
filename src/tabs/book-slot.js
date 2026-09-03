@@ -5,8 +5,8 @@
 import { callAura, resolveUserId } from '../aura.js';
 import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, futureDailyIntents, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate } from '../autobook.js';
 import { addDays, cleanResourceName, compactTimeRange, dayLabel, formatBookingWhen, isoDateLocal, sameDay, startOfToday } from '../dates.js';
-import { clearPersistedBookings } from '../persist.js';
-import { el } from '../dom.js';
+import { clearPersistedBookings, readPersistedResources, sameData, writePersistedResources } from '../persist.js';
+import { el, skel } from '../dom.js';
 import { buildDayNav, buildPicker, buildSwitch, renderEmpty } from '../shell.js';
 import { cache, ui } from '../state.js';
 
@@ -124,10 +124,41 @@ function scrollConfirmIntoView(target) {
   }, CONFIRM_SCROLL_SETTLE_MS);
 }
 
+async function fetchFacilities() {
+  const raw = await callAura('CustomBookingController', 'getResources', null, true);
+  return JSON.parse(raw).map((f) => ({ ...f, resources: sortResources(f.resources || []) }));
+}
+
 export async function renderBookSlot(token) {
   if (!bookState.facilities) {
-    const raw = await callAura('CustomBookingController', 'getResources', null, true);
-    bookState.facilities = JSON.parse(raw).map((f) => ({ ...f, resources: sortResources(f.resources || []) }));
+    // Everything above the slot grid — the facility rail, the resource
+    // picker, the day nav — is drawn from this one list, and the list is
+    // the same all semester. Waiting on a round trip to draw a rail whose
+    // contents never change is the whole reason this tab used to open on
+    // a blank page. So last week's copy paints now and the request still
+    // goes out; only an answer that differs is allowed to touch the UI.
+    const cached = readPersistedResources();
+    if (cached) {
+      bookState.facilities = cached;
+      fetchFacilities()
+        .then((fresh) => {
+          if (!fresh || !fresh.length || sameData(fresh, bookState.facilities)) return;
+          bookState.facilities = fresh;
+          writePersistedResources(fresh);
+          // Rare enough to be worth a plain repaint: a resource was added
+          // or renamed, which changes the rail and the picker together.
+          // Not a loop — facilities is set, so this returns straight past
+          // the branch it is standing in.
+          if (token === ui.activeToken) renderBookSlot(token);
+        })
+        .catch(() => {
+          // A failed revalidation leaves the cached list on screen, which
+          // is the same list the portal had a moment ago.
+        });
+    } else {
+      bookState.facilities = await fetchFacilities();
+      writePersistedResources(bookState.facilities);
+    }
   }
   const facilities = bookState.facilities;
   if (token !== ui.activeToken) return;
@@ -167,11 +198,50 @@ export async function renderBookSlot(token) {
     return r ? r.name : '';
   }
 
+  // A slot card as a box, before anything is known about it. The times
+  // are not a guess: knownSlotTimes derives them from the resource's own
+  // operating window ("Gym ( 6:00 am to 2:00 pm slot )" is eight hourly
+  // slots), falling back to whatever that resource last offered. So the
+  // grid can be drawn with real labels, in the real number of cards, and
+  // only the capacity line — the one thing that genuinely needs the
+  // server — is left shimmering.
+  function createSlotShell(sl) {
+    const btn = el('button', { class: 'fr-slot fr-slot--skeleton', type: 'button', disabled: '' });
+    btn.dataset.start = sl.startTime;
+    btn.append(
+      el('span', { class: 'fr-slot-time', text: compactTimeRange(sl.startTime, sl.endTime) }),
+      el('span', { class: 'fr-slot-cap' }, [skel(7)])
+    );
+    return btn;
+  }
+
   async function refreshAvailability() {
-    resultsWrap.replaceChildren(el('div', { class: 'fr-loading', style: 'padding: 40px 0;' }, [el('div', { class: 'fr-spinner' })]));
     confirmWrap.replaceChildren();
     const resource = currentResource();
     const isoDate = isoDateLocal(bookState.date);
+
+    // The scheduled-autobook list below the grid is read out of
+    // localStorage, so it is drawn now rather than after a request it
+    // never needed. When the resource's slot times can't be predicted at
+    // all, there is nothing truthful to draw and the spinner is still the
+    // honest answer.
+    const expected = resource ? knownSlotTimes(resource) : [];
+    let grid = null;
+    if (expected.length) {
+      grid = el('div', { class: 'fr-slot-grid', 'aria-busy': 'true' });
+      for (const sl of expected) grid.appendChild(createSlotShell(sl));
+      // The claim note is drawn now for the same reason the scheduled
+      // list is: it comes from an intent in localStorage, not from the
+      // request. Leaving it out until the answer lands would push the
+      // whole grid down a line at exactly the wrong moment.
+      resultsWrap.replaceChildren(
+        ...(claimNoteFor(resource, isoDate) ? [claimNoteFor(resource, isoDate)] : []),
+        grid,
+        buildScheduledList(refreshAvailability)
+      );
+    } else {
+      resultsWrap.replaceChildren(el('div', { class: 'fr-loading', style: 'padding: 40px 0;' }, [el('div', { class: 'fr-spinner' })]));
+    }
     let slots = [];
     let serverMessage = '';
     try {
@@ -225,9 +295,21 @@ export async function renderBookSlot(token) {
       return;
     }
 
-    const grid = el('div', { class: 'fr-slot-grid' });
+    // Fill the cards that are already on screen rather than building a
+    // second grid and swapping it in: same nodes, same positions, so the
+    // answer arriving changes the words inside the cards and nothing else.
+    // A card is only created here when the skeleton could not predict it.
+    const shells = new Map();
+    if (grid) for (const node of grid.children) shells.set(node.dataset.start, node);
+    const ordered = [];
     for (const sl of timeline) {
-      const slotBtn = el('button', { class: `fr-slot${sl.kind === 'later' ? ' fr-slot--later' : ''}`, type: 'button' });
+      const slotBtn = shells.get(sl.startTime) || createSlotShell(sl);
+      shells.delete(sl.startTime);
+      ordered.push(slotBtn);
+      slotBtn.classList.remove('fr-slot--skeleton');
+      slotBtn.classList.toggle('fr-slot--later', sl.kind === 'later');
+      slotBtn.disabled = false;
+      const cap = slotBtn.querySelector('.fr-slot-cap');
       // One auto-booking per resource class per day: if any waiting
       // intent already claims this class on this date, only the tile it
       // belongs to stays interactive. The rest say why they are inert
@@ -255,9 +337,11 @@ export async function renderBookSlot(token) {
       // them. They are simply not on offer, and all autobook can do is
       // keep checking.
       const windowOpen = sl.kind === 'later' && sl.opensAt <= Date.now();
-      slotBtn.append(el('span', { class: 'fr-slot-time', text: compactTimeRange(sl.startTime, sl.endTime) }));
+      // Truthful even when memory was wrong about this resource's hours.
+      slotBtn.querySelector('.fr-slot-time').textContent = compactTimeRange(sl.startTime, sl.endTime);
       if (sl.kind === 'open') {
-        slotBtn.appendChild(el('span', { class: 'fr-slot-cap', text: `${sl.availableCapacity} left` }));
+        cap.replaceChildren();
+        cap.textContent = `${sl.availableCapacity} left`;
         if (sl.availableCapacity <= 0) slotBtn.disabled = true;
         slotBtn.addEventListener('click', () => {
           grid.querySelectorAll('.fr-slot').forEach((b) => b.classList.remove('is-selected'));
@@ -265,15 +349,13 @@ export async function renderBookSlot(token) {
           openConfirm(sl, warnsClaim ? claimedBy : null);
         });
       } else {
-        slotBtn.appendChild(el('span', {
-          class: 'fr-slot-cap',
-          // A blocked tile says nothing at all. The reason is identical on
-          // every one of them, so printing it down a whole grid is noise;
-          // it is stated once above the grid, and again on tap.
-          text: scheduled ? 'Auto-booking ✓'
-            : windowOpen ? 'Slots full'
-            : `Opens ${relativeFuture(sl.opensAt)}`,
-        }));
+        cap.replaceChildren();
+        // A blocked tile says nothing at all. The reason is identical on
+        // every one of them, so printing it down a whole grid is noise;
+        // it is stated once above the grid, and again on tap.
+        cap.textContent = scheduled ? 'Auto-booking ✓'
+          : windowOpen ? 'Slots full'
+          : `Opens ${relativeFuture(sl.opensAt)}`;
         slotBtn.classList.toggle('is-scheduled', scheduled);
         if (blocked) {
           // Not `disabled`: a disabled button never fires a click, and
@@ -345,19 +427,28 @@ export async function renderBookSlot(token) {
           openAutoConfirm(sl, windowOpen);
         });
       }
-      grid.appendChild(slotBtn);
     }
-    // Said once, above the grid, so the greying is not a mystery until
-    // something is tapped.
-    const dayClaim = conflictingIntent(resource.name, isoDate);
-    const claimNote = dayClaim
-      ? el('p', { class: 'fr-slot-notice', text: blockedReason(dayClaim, dayClaim.date !== isoDate) })
-      : null;
+    // Whatever the skeleton predicted and the day did not have simply
+    // does not make it into `ordered`, so this drops it.
+    if (grid) grid.replaceChildren(...ordered);
+    else grid = el('div', { class: 'fr-slot-grid' }, ordered);
+    grid.removeAttribute('aria-busy');
+    const claimNote = claimNoteFor(resource, isoDate);
     resultsWrap.replaceChildren(
       ...(claimNote ? [claimNote] : []),
       grid,
       buildScheduledList(refreshAvailability)
     );
+  }
+
+  // Said once, above the grid, so the greying is not a mystery until
+  // something is tapped. Known without asking the portal anything — the
+  // claim is an intent of ours, sitting in localStorage.
+  function claimNoteFor(resource, isoDate) {
+    const dayClaim = resource ? conflictingIntent(resource.name, isoDate) : null;
+    return dayClaim
+      ? el('p', { class: 'fr-slot-notice', text: blockedReason(dayClaim, dayClaim.date !== isoDate) })
+      : null;
   }
 
   // One wording, three places: the tooltip, the tap notice, and the line

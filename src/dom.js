@@ -11,3 +11,12 @@ export function el(tag, attrs = {}, children = []) {
   for (const child of [].concat(children)) node.appendChild(child);
   return node;
 }
+
+// One shimmering placeholder block, sized in ch because the only thing a
+// caller knows is roughly how long the real text will be. It carries a
+// non-breaking space so it occupies a real line box of whatever type its
+// parent uses — that is what keeps a skeleton row exactly as tall as the
+// row it stands in for. See .fr-skel.
+export function skel(widthCh) {
+  return el('span', { class: 'fr-skel', style: `width: ${widthCh}ch`, text: ' ' });
+}

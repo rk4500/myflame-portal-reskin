@@ -34,11 +34,18 @@ function renderErrorPanel(message, retry) {
   ui.contentEl.replaceChildren(box);
 }
 
-export function renderEmpty(iconName, title, text, extraClass) {
+export function renderEmpty(iconName, title, text, extraClass, action) {
   const box = el('div', { class: extraClass ? `fr-empty ${extraClass}` : 'fr-empty' });
   box.appendChild(icon(iconName, 'fr-empty-icon'));
   box.appendChild(el('p', { class: 'fr-empty-title', text: title }));
   if (text) box.appendChild(el('p', { class: 'fr-empty-text', text }));
+  // An empty state that can be acted on says so. Optional, because most
+  // of them (no classes today) have nothing to offer but the fact.
+  if (action) {
+    const btn = el('button', { class: 'fr-btn fr-btn--ghost fr-empty-action', type: 'button', text: action.label });
+    btn.addEventListener('click', action.onClick);
+    box.appendChild(btn);
+  }
   return box;
 }
 
