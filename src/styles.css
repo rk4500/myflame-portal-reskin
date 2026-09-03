@@ -655,9 +655,9 @@ body.flame-reskin-off #flame-reskin-toggle {
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
   .fr-content--gyan {
-    height: calc(100% - 68px - var(--flame-navbar-inset));
+    height: 100%;
     overflow: hidden;
-    padding: 12px 20px 12px;
+    padding: 12px 20px calc(80px + var(--flame-navbar-inset));
   }
 }
 
