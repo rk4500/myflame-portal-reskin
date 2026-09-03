@@ -120,7 +120,7 @@
   letter-spacing: 0.04em; color: var(--text-secondary); margin: 0 0 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.fr-group-heading-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 12px; }
+.fr-group-heading-row { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 12px; flex-shrink: 0; }
 .fr-link-btn {
   font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--accent);
   background: none; border: none; padding: 0; cursor: pointer;
@@ -542,6 +542,7 @@
 .fr-error-text { color: var(--danger); }
 
 /* Gyan chat tab */
+.fr-content--gyan { overflow: hidden; height: 100%; padding: 24px 48px 24px; }
 .fr-gyan-page { display: flex; flex-direction: column; height: 100%; min-height: 0; max-width: 720px; }
 .fr-gyan-messages { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; }
 /* A short exchange used to sit flush against the header, leaving a dead
@@ -653,6 +654,11 @@ body.flame-reskin-off #flame-reskin-toggle {
      week mode to force this. */
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
+  .fr-content--gyan {
+    height: calc(100% - 68px - var(--flame-navbar-inset));
+    overflow: hidden;
+    padding: 12px 20px 12px;
+  }
 }
 
 /* A booking result is worth noticing, but not worth insisting on for
