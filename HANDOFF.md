@@ -635,4 +635,10 @@ A thrown `ReferenceError` renders as an empty or half-built tab, which in a scre
 
 `.patch-tools/regen-hook-script.py` deleted — `build.mjs` does its job, and having two things able to write `hook.js` is how they drift.
 
-**Not tested on-device.** **The `v2026.09.03.2` release was cut from `master` before this branch**, so it ships the same code, just built by hand.
+### Confirmed on-device (2026-09-04)
+
+Phone reconnected over wireless debugging (`adb connect`, Xiaomi 23127PN0CG / `houji`). Rebuilt the APK from this branch's output — `npm run build` → `frida-compile` → `objection patchapk`, embedded `libfrida-gadget.script.so` byte-matching `hook.compiled.js` at 580,938 bytes, no `OutOfMemoryError` — and `adb install -r` over the existing install (session preserved, no re-login). **The reskin renders.** That is the whole build pipeline validated end to end on real hardware, not just in the harness.
+
+Worth noting for next time: `adb logcat` had already rolled past the launch by the time it was read, so the `[flame-inject]` lines were not captured. Not worth force-stopping a working app to chase them — nothing else injects the reskin, so the UI rendering *is* the evidence the hook fired. Clear the buffer *before* launching if the log lines themselves are wanted.
+
+The `v2026.09.03.2` release was cut from `master` before this branch, so it ships the same code, just built by hand. Branch merged to `master` with `--no-ff` as `cae8696`; `build-split` kept, not deleted.
