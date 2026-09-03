@@ -697,3 +697,52 @@ Not its UI — but not nothing, either. `aura.context` **is** in the bootstrap H
 - `<pre id="errors">` on every scenario, trapping `onerror`/`unhandledrejection`/`console.error`.
 
 **Not committed until this entry**: everything above. **The `v2026.09.03.2` release predates all of it.**
+
+## Auto-booking UI: confirm panel, daily repeat, and four rule bugs (2026-09-04)
+
+Autobook was a single tap on a tile. It now goes through a confirm panel, can repeat daily, and several rules that only looked right have been fixed.
+
+### Autobook confirm panel
+
+`openAutoConfirm()` mirrors `openConfirm()` — same panel, same fields, because it ends in the same `createReservation`, just made later by the runner from what was captured. Titled `Autobook 6 AM – 7 AM`, with Purpose/Co-attendee for room-type resources. **Autobook never sent those before**: they are stored on the intent now and passed through at fire time, so a scheduled room booking carries the same details a manual one does.
+
+Copy is deliberately one line. The first draft explained the 24h window, the retry behaviour and the lack of a guarantee in a paragraph per case; the user's verdict was "no one is reading allat". The only distinction worth the space is **tries** versus **reserves**:
+- `Tries as soon as it opens. Not a reservation.`
+- `Full right now. Keeps checking and books it if it frees up.` (window already open)
+
+"Repeat daily" carries no caption at all — the two words are the explanation.
+
+### Daily repeat
+
+`intent.repeat === 'daily'`. A series is **not** a rule that fires forever: each occurrence spawns the next only once it has been settled, either way. Consequences worth knowing:
+
+- **One row in the list, never a queue.** There is only ever one waiting intent per series, labelled `… · daily`, and Stop ends the series outright because nothing spawns until something resolves.
+- A refusal does not end a series — tomorrow is a fresh day.
+- A **daily series claims every day from its own date onward**, not just its own. Without that you could set a daily gym autobook for tomorrow and still be offered Sunday as if it were free, only for the series to arrive and take it. Those tiles read `Daily autobook`.
+
+### Four bugs, three of them mine from earlier in the same session
+
+1. **The one-per-day claim never ran on open slots.** It was computed as `sl.kind === 'later' ? conflictingIntent(...) : null`, so a day already claimed by an autobook still offered every bookable slot on it as if nothing were pending. The claim is a property of the day, not of the tile's kind.
+2. **A daily series died silently at the first hand-claimed day.** `spawnNextOccurrence` did `return` when the next day was already claimed, and since the next occurrence is only created on settle, nothing ever restarted it: a one-off gym on Friday plus a daily from Tuesday ran Tue–Thu and then never again, stopping at exactly the booking you had made yourself, with nothing to say so. It now steps over a claimed day (up to `SERIES_LOOKAHEAD_DAYS`, 7) instead of stopping at it.
+3. **`scheduled` did not compare dates**, so a series reaching forward from an earlier day made a tile on a later day offer to cancel an intent that was not its own.
+4. **Caption precedence was wrong**: `blocked` was tested before `bySeries`, so a day claimed by a series showed a time belonging to a different day.
+
+### Manual booking on a claimed day: warn, don't block
+
+Chosen deliberately over greying it out. An open slot stays clickable; the panel says `Stops your 6 AM – 7 AM autobook — one booking a day.` and the intent really is removed on success. A second *autobook* on a claimed day is refused outright instead, because unlike a manual booking it could never succeed.
+
+### Ask before acting
+
+The manual panel now calls `existingBookingFor(resourceName, isoDate)` when it opens and disables submit if that resource class is already booked that day — `Already booked Gym Today · 8 AM – 9 AM — one booking a day.` Previously it sent the request and rendered the portal's refusal as a red error. A failed lookup does not block the booking: the portal is still the authority.
+
+### Captions
+
+`Opens now` is gone. A slot whose 24h window has opened but which the portal still is not listing now says **`Slots full`** — that case happens whenever `getResourceAvailability` returns nothing for a resource, which puts *every* known slot on the `later` path including ones inside the window.
+
+### Process note, worth more than any of the above
+
+One of the edit scripts in this session aborted partway through, so a set of changes reported as applied had never been written — including the `bySeries` logic. The harness caught it, but only because a test was actually run against the claim. **A script that edits several places must be verified by its effects, not by its own success message.** The same session also shipped three Android builds that were guesses, for the same reason: no instrumentation before the second attempt.
+
+### Harness
+
+`?auto=series-covers` (a daily series locks the following day, with the right caption), `?seed=series-clash` + `?auto=seed-result` (a series steps over a hand-claimed day), `?auto=autopanel`, `?auto=confirm-warn`, `?auto=shiftcheck` (an overlay must not move the page), `?auto=banner-anim`. Scenarios that need a bookable or schedulable tile now **hunt for a day that has one** via `findDayWith()` instead of assuming an offset — hardcoding "tomorrow" made them pass or fail depending on the hour.

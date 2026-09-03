@@ -153,6 +153,29 @@ export function buildShell() {
 
 // Small reusable day-navigator: prev/next/today + a label, used by both
 // the Calendar grid and the Book Slot date field (no native date picker).
+// A labelled on/off switch. Returns the row plus a `checked` getter, the
+// same minimal surface buildPicker exposes — callers only ever ask it one
+// question.
+export function buildSwitch({ label, hint, checked = false }) {
+  const row = el('div', { class: 'fr-switch-row' });
+  const text = el('div', {}, [el('div', { class: 'fr-switch-label', text: label })]);
+  if (hint) text.appendChild(el('p', { class: 'fr-switch-hint', text: hint }));
+  const btn = el('button', {
+    class: 'fr-switch', type: 'button',
+    role: 'switch', 'aria-checked': String(checked), 'aria-pressed': String(checked),
+    'aria-label': label,
+  });
+  btn.appendChild(el('span', { class: 'fr-switch-knob' }));
+  let on = checked;
+  btn.addEventListener('click', () => {
+    on = !on;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.setAttribute('aria-checked', String(on));
+  });
+  row.append(text, btn);
+  return { el: row, get checked() { return on; } };
+}
+
 export function buildDayNav({ label, onPrev, onNext, onToday, prevDisabled }) {
   const wrap = el('div', { class: 'fr-daynav' });
   const prevBtn = el('button', { class: 'fr-daynav-btn', type: 'button', 'aria-label': 'Previous day' });

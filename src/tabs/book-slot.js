@@ -3,11 +3,11 @@
 // ---------------------------------------------------------------------
 
 import { callAura, resolveUserId } from '../aura.js';
-import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, slotStartDate } from '../autobook.js';
-import { addDays, cleanResourceName, compactTimeRange, dayLabel, isoDateLocal, sameDay, startOfToday } from '../dates.js';
+import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, slotStartDate } from '../autobook.js';
+import { addDays, cleanResourceName, compactTimeRange, dayLabel, formatBookingWhen, isoDateLocal, sameDay, startOfToday } from '../dates.js';
 import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
-import { buildDayNav, buildPicker, renderEmpty } from '../shell.js';
+import { buildDayNav, buildPicker, buildSwitch, renderEmpty } from '../shell.js';
 import { cache, ui } from '../state.js';
 
 const bookState = { facilities: null, categoryIdx: 0, resourceId: null, date: startOfToday() };
@@ -148,9 +148,29 @@ export async function renderBookSlot(token) {
       // intent already claims this class on this date, only the tile it
       // belongs to stays interactive. The rest say why they are inert
       // instead of accepting a tap that could never become a booking.
-      const claimedBy = sl.kind === 'later' ? conflictingIntent(resource.name, isoDate) : null;
-      const scheduled = !!claimedBy && claimedBy.resourceId === resource.resourceId && claimedBy.startTime === sl.startTime;
-      const blocked = !!claimedBy && !scheduled;
+      // The claim is a property of the day, not of the tile's kind. This
+      // used to be computed only for 'later' tiles, so an open slot on a
+      // day already claimed by an autobook looked perfectly bookable.
+      const claimedBy = conflictingIntent(resource.name, isoDate);
+      // "Scheduled" means this exact slot on this exact day. A daily
+      // series reaching forward from an earlier day claims the day too,
+      // but it is not this tile's intent and must not offer to cancel it.
+      const scheduled = !!claimedBy && claimedBy.date === isoDate
+        && claimedBy.resourceId === resource.resourceId && claimedBy.startTime === sl.startTime;
+      const bySeries = !!claimedBy && claimedBy.date !== isoDate;
+      // Two different answers for the two kinds. A second *autobook* on a
+      // claimed day can never succeed, so it is refused outright. A manual
+      // booking still can — it just costs the day, so it warns and stops
+      // the pending intent instead of being blocked.
+      const blocked = !!claimedBy && !scheduled && sl.kind === 'later';
+      const warnsClaim = !!claimedBy && !scheduled && sl.kind === 'open';
+      // A 'later' tile exists because availability did not list the slot.
+      // Usually that means its 24h window has not opened; but when the
+      // portal returns nothing at all for a resource, slots inside the
+      // window land here too, and "Opens now" is a nonsense caption for
+      // them. They are simply not on offer, and all autobook can do is
+      // keep checking.
+      const windowOpen = sl.kind === 'later' && sl.opensAt <= Date.now();
       slotBtn.append(el('span', { class: 'fr-slot-time', text: compactTimeRange(sl.startTime, sl.endTime) }));
       if (sl.kind === 'open') {
         slotBtn.appendChild(el('span', { class: 'fr-slot-cap', text: `${sl.availableCapacity} left` }));
@@ -158,19 +178,28 @@ export async function renderBookSlot(token) {
         slotBtn.addEventListener('click', () => {
           grid.querySelectorAll('.fr-slot').forEach((b) => b.classList.remove('is-selected'));
           slotBtn.classList.add('is-selected');
-          openConfirm(sl);
+          openConfirm(sl, warnsClaim ? claimedBy : null);
         });
       } else {
         slotBtn.appendChild(el('span', {
           class: 'fr-slot-cap',
+          // bySeries before blocked: a series claiming the day is also
+          // "blocked", but naming a time from another day would read as
+          // nonsense on this one.
           text: scheduled ? 'Auto-booking ✓'
+            : bySeries ? 'Daily autobook'
             : blocked ? `${compactTimeRange(claimedBy.startTime, claimedBy.endTime || claimedBy.startTime)} scheduled`
+            // Its window is open and the portal still isn't listing it:
+            // there is simply nothing to take.
+            : windowOpen ? 'Slots full'
             : `Opens ${relativeFuture(sl.opensAt)}`,
         }));
         slotBtn.classList.toggle('is-scheduled', scheduled);
         if (blocked) {
           slotBtn.disabled = true;
-          slotBtn.title = `Only one ${cleanResourceName(resource.name)} booking a day — stop the scheduled one first.`;
+          slotBtn.title = bySeries
+            ? `A daily ${cleanResourceName(resource.name)} autobook already covers this day.`
+            : `Only one ${cleanResourceName(resource.name)} booking a day — stop the scheduled one first.`;
         }
         slotBtn.addEventListener('click', () => {
           if (scheduled) {
@@ -178,16 +207,12 @@ export async function renderBookSlot(token) {
               (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && i.startTime === sl.startTime
             );
             if (mine) removeIntent(mine.id);
-          } else {
-            scheduleIntent({
-              resource,
-              facilityName: facilities[bookState.categoryIdx].facility_Name,
-              date: bookState.date,
-              startTime: sl.startTime,
-              endTime: sl.endTime,
-            });
+            refreshAvailability();
+            return;
           }
-          refreshAvailability();
+          grid.querySelectorAll('.fr-slot').forEach((b) => b.classList.remove('is-selected'));
+          slotBtn.classList.add('is-selected');
+          openAutoConfirm(sl, windowOpen);
         });
       }
       grid.appendChild(slotBtn);
@@ -195,7 +220,10 @@ export async function renderBookSlot(token) {
     resultsWrap.replaceChildren(grid, buildScheduledList(refreshAvailability));
   }
 
-  function openConfirm(slot) {
+  function openConfirm(slot, claimedBy) {
+    // currentResource(), not `resource`: that binding is local to
+    // refreshAvailability and this is a sibling of it, not a child.
+    const resource = currentResource();
     // Purpose/co-attendee only make sense for a room booking (who's
     // meeting, why) — a gym or pool slot doesn't need either, so skip
     // the fields entirely for Sports Facilities rather than showing
@@ -232,6 +260,10 @@ export async function renderBookSlot(token) {
         if (/\bR-\d+\b/.test(result)) {
           cache.bookings = null; // invalidate so My Bookings refetches
           clearPersistedBookings();
+          // This booking just spent the day's one allowance, so a pending
+          // autobook for the same resource that day can only fail now.
+          // Clearing it here is the promise the warning above made.
+          if (claimedBy) removeIntent(claimedBy.id);
           confirmWrap.replaceChildren(el('div', { class: 'fr-success-panel', text: result }));
         } else {
           submitBtn.disabled = false;
@@ -245,11 +277,103 @@ export async function renderBookSlot(token) {
       }
     });
 
+    // Ask before acting. The portal refuses a second booking of the same
+    // resource class on the same day, and that refusal used to arrive as a
+    // red error panel after a request that was never going to work. The
+    // answer is already in the bookings list, so read it there.
+    const conflictSlot = el('div', { class: 'fr-confirm-note' });
+    existingBookingFor(resource.name, isoDateLocal(bookState.date))
+      .then((booked) => {
+        if (!booked) return;
+        submitBtn.disabled = true;
+        conflictSlot.className = 'fr-confirm-warn';
+        conflictSlot.textContent =
+          `Already booked ${cleanResourceName(resource.name)} ${formatBookingWhen(booked)} — one booking a day.`;
+      })
+      .catch(() => {
+        // A failed lookup must not block a booking that might be fine;
+        // the portal is still the authority and will say no if it must.
+      });
+
+    const warning = claimedBy
+      ? el('p', {
+          class: 'fr-confirm-warn',
+          text: `Stops your ${compactTimeRange(claimedBy.startTime, claimedBy.endTime || claimedBy.startTime)} autobook — one booking a day.`,
+        })
+      : null;
+
     confirmWrap.replaceChildren(
       el('div', { class: 'fr-confirm-panel' }, [
         el('p', { class: 'fr-confirm-panel-title', text: compactTimeRange(slot.startTime, slot.endTime) }),
+        ...(warning ? [warning] : []),
+        conflictSlot,
         ...(purposeInput ? [purposeInput] : []),
         ...(attendeeInput ? [attendeeInput] : []),
+        submitBtn,
+      ])
+    );
+  }
+
+  // The autobook twin of openConfirm. Same panel, same fields, because it
+  // ends in the same createReservation call — just made later, by the
+  // runner, from what is captured here.
+  function openAutoConfirm(slot, windowOpen) {
+    const resource = currentResource();
+    if (!resource) return;
+    const facility = facilities[bookState.categoryIdx];
+    const needsDetails = facility.facility_Name !== 'Sports Facilities';
+    const purposeInput = needsDetails
+      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Purpose (optional)' })
+      : null;
+    const attendeeInput = needsDetails
+      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee (optional)' })
+      : null;
+    const repeatSwitch = buildSwitch({ label: 'Repeat daily' });
+    const submitBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'button', text: 'Autobook' });
+
+    // What scheduling actually promises, said plainly. It watches and
+    // retries; it does not reserve anything, and a full slot stays full
+    // until somebody cancels.
+    const note = el('p', {
+      class: 'fr-confirm-note',
+      // One line. The only distinction worth making is "tries" versus
+      // "reserves"; the rest was padding nobody reads on a confirm panel.
+      text: windowOpen ? 'Full right now. Keeps checking and books it if it frees up.'
+                       : 'Tries as soon as it opens. Not a reservation.',
+    });
+
+    submitBtn.addEventListener('click', () => {
+      const intent = scheduleIntent({
+        resource,
+        facilityName: facility.facility_Name,
+        date: bookState.date,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        purpose: purposeInput ? purposeInput.value || '' : '',
+        coAttendee: attendeeInput ? attendeeInput.value || '' : '',
+        repeat: repeatSwitch.checked ? 'daily' : null,
+      });
+      confirmWrap.replaceChildren();
+      if (!intent) {
+        // scheduleIntent refuses a second one for the same resource class
+        // and day; say so rather than silently doing nothing.
+        confirmWrap.replaceChildren(
+          el('div', {
+            class: 'fr-error-panel',
+            text: `You already have an autobook waiting for ${cleanResourceName(resource.name)} that day.`,
+          })
+        );
+      }
+      refreshAvailability();
+    });
+
+    confirmWrap.replaceChildren(
+      el('div', { class: 'fr-confirm-panel' }, [
+        el('p', { class: 'fr-confirm-panel-title', text: `Autobook ${compactTimeRange(slot.startTime, slot.endTime)}` }),
+        note,
+        ...(purposeInput ? [purposeInput] : []),
+        ...(attendeeInput ? [attendeeInput] : []),
+        repeatSwitch.el,
         submitBtn,
       ])
     );

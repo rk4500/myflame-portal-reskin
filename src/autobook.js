@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------
 
 import { auraState, callAura, resolveUserId } from './aura.js';
-import { cleanResourceName, compactTimeRange, formatTime, isoDateLocal, parseBookingDateTime, shortDayLabel } from './dates.js';
+import { addDays, cleanResourceName, compactTimeRange, formatTime, isoDateLocal, parseBookingDateTime, shortDayLabel } from './dates.js';
 import { clearPersistedBookings } from './persist.js';
 import { el } from './dom.js';
 import { cache, ui } from './state.js';
@@ -117,18 +117,27 @@ function resourceClassKey(name) {
 }
 
 // The waiting intent that already claims this class/day, if any.
+//
+// A daily series claims every day from its own date onward, not just that
+// one: it is going to reach them. Without this you could set a daily gym
+// autobook for tomorrow and still be offered Thursday as if it were free,
+// only for the series to arrive and take it.
 export function conflictingIntent(resourceName, isoDate, list) {
   const key = resourceClassKey(resourceName);
-  return (list || loadIntents()).find(
-    (i) => i.state === 'waiting' && i.date === isoDate && resourceClassKey(i.resourceName) === key
-  ) || null;
+  return (list || loadIntents()).find((i) => {
+    if (i.state !== 'waiting') return false;
+    if (resourceClassKey(i.resourceName) !== key) return false;
+    if (i.date === isoDate) return true;
+    // ISO dates compare correctly as strings.
+    return i.repeat === 'daily' && i.date < isoDate;
+  }) || null;
 }
 
 // Returns the new intent, or null if the day is already claimed for this
 // resource class. Two intents for one class on one day can only ever
 // produce one booking and one refusal, so the second is refused here,
 // where it can still be explained, rather than at fire time.
-export function scheduleIntent({ resource, facilityName, date, startTime, endTime }) {
+export function scheduleIntent({ resource, facilityName, date, startTime, endTime, purpose, coAttendee, repeat }) {
   const list = loadIntents();
   const isoDate = isoDateLocal(date);
   if (conflictingIntent(resource.name, isoDate, list)) return null;
@@ -140,6 +149,14 @@ export function scheduleIntent({ resource, facilityName, date, startTime, endTim
     date: isoDate,
     startTime,
     endTime,
+    // Carried through to createReservation, the same two fields the manual
+    // booking panel sends. Rooms want them; sports facilities have nothing
+    // meaningful to put in either.
+    purpose: purpose || '',
+    coAttendee: coAttendee || '',
+    // 'daily' re-arms for the same time tomorrow once this one is settled;
+    // anything falsy is a one-off.
+    repeat: repeat || null,
     state: 'waiting',
     message: '',
     createdAt: Date.now(),
@@ -147,6 +164,43 @@ export function scheduleIntent({ resource, facilityName, date, startTime, endTim
   list.push(intent);
   saveIntents(list);
   return intent;
+}
+
+// A recurring intent is not a rule that fires forever: each occurrence
+// spawns the next only once it has actually been settled. So stopping a
+// series is just removing the one waiting intent — there is no separate
+// series object to unwind — and a failing intent cannot build a backlog,
+// because nothing is created until something resolves.
+// How far ahead to look for a free day before giving up. A daily series
+// only ever needs to step over days the user has claimed by hand, and
+// seven of those in a row means something else is going on.
+const SERIES_LOOKAHEAD_DAYS = 7;
+
+function spawnNextOccurrence(intent, list) {
+  if (intent.repeat !== 'daily') return;
+  const start = slotStartDate(intent.date, intent.startTime);
+  if (!start) return;
+  // Step over any day already claimed for this resource class rather than
+  // stopping at it. This used to `return` on the first clash, which killed
+  // the series outright: schedule a one-off gym for Friday, then a daily
+  // from Tuesday, and the daily would run Tue, Wed, Thu and then silently
+  // never again — dying exactly when it met the booking you had made
+  // yourself, with nothing to say it had. One booking a day still holds;
+  // the series just resumes the day after.
+  for (let ahead = 1; ahead <= SERIES_LOOKAHEAD_DAYS; ahead++) {
+    const nextDate = isoDateLocal(addDays(start, ahead));
+    if (conflictingIntent(intent.resourceName, nextDate, list)) continue;
+    list.push({
+      ...intent,
+      id: `i${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      date: nextDate,
+      state: 'waiting',
+      message: '',
+      seen: false,
+      createdAt: Date.now(),
+    });
+    return;
+  }
 }
 
 export function removeIntent(id) {
@@ -157,15 +211,23 @@ export function removeIntent(id) {
 // resource without its operating-window suffix, so the 6 AM gym and the
 // 3 PM gym are the same thing as far as the rule is concerned. Checking
 // first turns a guaranteed refusal into a clear message.
-async function alreadyBookedThatDay(intent) {
+// The booking already held for this resource class on this date, if any.
+// Exported so the manual booking panel can ask the same question before
+// submitting, rather than sending a request the portal is certain to
+// refuse and showing the refusal as an error.
+export async function existingBookingFor(resourceName, isoDate) {
   const userId = await resolveUserId();
   const bookings = cache.bookings || (cache.bookings = await callAura('CustomBookingController', 'getReservations', { userId }));
-  const wanted = cleanResourceName(intent.resourceName).toLowerCase();
-  return bookings.some((b) => {
+  const wanted = resourceClassKey(resourceName);
+  return bookings.find((b) => {
     if (b.status !== 'Booked') return false;
     const when = parseBookingDateTime(b.startDateTime);
-    return isoDateLocal(when) === intent.date && cleanResourceName(b.resourceName).toLowerCase() === wanted;
-  });
+    return isoDateLocal(when) === isoDate && resourceClassKey(b.resourceName) === wanted;
+  }) || null;
+}
+
+async function alreadyBookedThatDay(intent) {
+  return !!(await existingBookingFor(intent.resourceName, intent.date));
 }
 
 // "in 3h 20m" / "in 12m" — a countdown reads better than a wall-clock
@@ -197,13 +259,27 @@ export function buildScheduledList(onChange) {
     const opensAt = intentOpensAt(intent);
     const row = el('div', { class: 'fr-sched-row' });
     const main = el('div', { class: 'fr-sched-main' }, [
-      el('p', { class: 'fr-sched-name', text: intentSummary(intent) }),
+      el('p', {
+        class: 'fr-sched-name',
+        // A daily repeat is one row, not a queue: the next occurrence is
+        // not created until this one has been settled, so the list never
+        // grows into a wall of pending days.
+        text: intent.repeat === 'daily' ? `${intentSummary(intent)} · daily` : intentSummary(intent),
+      }),
       el('p', {
         class: 'fr-sched-note',
-        text: intent.message || (opensAt ? `Opens ${relativeFuture(opensAt.getTime())} — books itself while the app is open.` : ''),
+        text: intent.message
+          || (opensAt
+            ? `Opens ${relativeFuture(opensAt.getTime())} — tries while the app is open.${intent.repeat === 'daily' ? ' Repeats until stopped.' : ''}`
+            : ''),
       }),
     ]);
-    const drop = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Stop' });
+    const drop = el('button', {
+      class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Stop',
+      // Removing the one waiting intent ends the series outright, because
+      // nothing spawns the next until this one resolves.
+      title: intent.repeat === 'daily' ? 'Stops this and the daily repeat' : 'Stops this autobook',
+    });
     drop.addEventListener('click', () => {
       removeIntent(intent.id);
       if (onChange) onChange();
@@ -394,7 +470,10 @@ export async function runAutoBook() {
           userId,
           resource: intent.resourceId,
           startTime: intent.startTime,
+          endTime: intent.endTime,
           dateSelected: intent.date,
+          bookingPurpose: intent.purpose || '',
+          coAttendee: intent.coAttendee || '',
         });
         const text = typeof result === 'string' ? result : JSON.stringify(result);
         if (/booking id/i.test(text)) {
@@ -403,11 +482,15 @@ export async function runAutoBook() {
           claimed.add(classKey);
           cache.bookings = null;
           clearPersistedBookings();
+          spawnNextOccurrence(intent, list);
         } else {
           // createReservation answers refusals with state:SUCCESS and a
           // plain string, so the text is the only signal there is.
           intent.state = 'failed';
           intent.message = text;
+          // A refused day says nothing about tomorrow, so a series
+          // survives a refusal.
+          spawnNextOccurrence(intent, list);
         }
         changed = true;
       } catch (e) {

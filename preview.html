@@ -269,7 +269,25 @@
   } else if (seed !== 'keep') {
     localStorage.removeItem('flame-data-cache');
   }
-  if (seed === 'twin') {
+  // ?seed=series-clash reproduces the exact case: a daily series due now,
+  // and a one-off already holding the day it would spawn into. The series
+  // must step over that day, not stop at it.
+  if (seed === 'series-clash') {
+    const slot = firstOpenGymSlot();
+    const pad = (n) => String(n).padStart(2, '0');
+    const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const base = new Date(slot.date + 'T00:00:00');
+    const plus = (n) => { const d = new Date(base); d.setDate(d.getDate() + n); return iso(d); };
+    localStorage.setItem('flame-auto-book', JSON.stringify([
+      { id: 'series', resourceId: 'a230K00000945JHQAY', resourceName: 'Gym ( 6:00 am to 2:00 pm slot )',
+        facilityName: 'Sports Facilities', ...slot, repeat: 'daily',
+        state: 'waiting', message: '', createdAt: Date.now() },
+      // A one-off the user booked by hand, sitting on the very next day.
+      { id: 'oneoff', resourceId: 'a230K00000945JHQAY', resourceName: 'Gym ( 6:00 am to 2:00 pm slot )',
+        facilityName: 'Sports Facilities', date: plus(1), startTime: '1:00 PM', endTime: '2:00 PM',
+        repeat: null, state: 'waiting', message: '', createdAt: Date.now() },
+    ]));
+  } else if (seed === 'twin') {
     const slot = firstOpenGymSlot();
     const base = { facilityName: 'Sports Facilities', ...slot, state: 'waiting', message: '', createdAt: Date.now() };
     localStorage.setItem('flame-auto-book', JSON.stringify([
@@ -303,6 +321,24 @@
   window.addEventListener('load', async () => {
     const auto = new URLSearchParams(location.search).get('auto');
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    // Whether a given day has bookable slots, schedulable ones, or neither
+    // depends on the wall clock: the portal only lists a slot inside its
+    // 24h window, so "tomorrow" holds open slots at 11pm and none at 2am.
+    // Every scenario that needs one kind of tile hunts for a day that has
+    // it instead of assuming an offset — hardcoding one is what made these
+    // scenarios fail at some hours and pass at others.
+    const nextDay = async () => {
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(450);
+    };
+    const findDayWith = async (selector, maxDays = 3) => {
+      for (let i = 0; i <= maxDays; i++) {
+        const hit = document.querySelector(selector);
+        if (hit) return hit;
+        await nextDay();
+      }
+      return null;
+    };
     // Always dump whatever the error trap caught, whichever scenario ran.
     const dumpErrors = () => {
       const pre = document.createElement('pre');
@@ -314,13 +350,8 @@
     };
     setTimeout(dumpErrors, 2500);
     if (auto === 'book-confirm' || auto === 'book-confirm-fail') {
-      // Step to tomorrow before picking: today's gym window has usually
-      // closed by the time this is run, leaving no bookable slot at all
-      // (the same clock-dependence ?seed=due used to have).
-      await wait(400);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
       await wait(500);
-      document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)').click();
+      (await findDayWith('.fr-slot:not(:disabled):not(.fr-slot--later)'))?.click();
     }
     if (auto === 'book-confirm-fail') {
       await wait(200);
@@ -334,10 +365,8 @@
       await wait(200);
       // startsWith, not ===: ?long=1 lengthens the facility names.
       [...document.querySelectorAll('.fr-facility-item')].find((b) => b.textContent.startsWith('Conference Rooms')).click();
-      await wait(200);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(500);
-      document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)').click();
+      await wait(400);
+      (await findDayWith('.fr-slot:not(:disabled):not(.fr-slot--later)'))?.click();
     }
     if (auto === 'resource-picker-open') {
       await wait(200);
@@ -388,11 +417,9 @@
       // window, so the grid renders schedulable tiles rather than bookable
       // ones — click one to exercise the auto-book intent path.
       await wait(500);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(400);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(500);
-      document.querySelector('.fr-slot--later')?.click();
+      (await findDayWith('.fr-slot--later'))?.click();
+      await wait(250);
+      document.querySelector('.fr-confirm-panel .fr-btn--primary')?.click();
       await wait(300);
       if (auto === 'schedule-twice') {
         // Since the one-per-resource-class-per-day rule landed this is a
@@ -469,6 +496,47 @@
           out.push(`${sel}[${i}] ${Math.round(n.getBoundingClientRect().height)}px  ${label}`);
         });
       }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'autopanel' || auto === 'confirm-warn') {
+      // Opens the autobook panel (and, for confirm-warn, first schedules
+      // one so a manual booking that day shows the warning).
+      await wait(500);
+      if (auto === 'confirm-warn') {
+        (await findDayWith('.fr-slot--later'))?.click();
+        await wait(250);
+        document.querySelector('.fr-confirm-panel .fr-btn--primary')?.click();
+        await wait(400);
+        document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)')?.click();
+      } else {
+        (await findDayWith('.fr-slot--later'))?.click();
+      }
+      await wait(400);
+      document.querySelector('.fr-content').scrollTop = 9999;
+    }
+    if (auto === 'series-covers') {
+      // Schedule a daily autobook, then step to the next day: it should
+      // already be claimed, because the series is going to reach it.
+      await wait(500);
+      (await findDayWith('.fr-slot--later'))?.click();
+      await wait(250);
+      document.querySelector('.fr-switch')?.click();          // Repeat daily
+      await wait(100);
+      document.querySelector('.fr-confirm-panel .fr-btn--primary')?.click();
+      await wait(400);
+      const dayLabel = () => document.querySelector('.fr-daynav-label')?.textContent || '?';
+      const intents = () => JSON.parse(localStorage.getItem('flame-auto-book') || '[]')
+        .filter((i) => i.state === 'waiting')
+        .map((i) => `${i.date} ${i.startTime}${i.repeat ? ' [daily]' : ''}`).join(' | ');
+      const out = ['scheduled on: ' + dayLabel(), 'intents: ' + intents()];
+      await nextDay();
+      out.push('--- next day: ' + dayLabel() + ' ---');
+      [...document.querySelectorAll('.fr-slot')].slice(0, 3).forEach((t, i) => {
+        out.push(`tile[${i}] ${t.disabled ? 'disabled' : 'enabled '} ${t.textContent.trim()}`);
+      });
       const pre = document.createElement('pre');
       pre.id = 'measure';
       pre.textContent = out.join('\n');
@@ -571,17 +639,15 @@
       // eyeballed: click three later slots for the same resource on the
       // same day and dump what actually got scheduled, plus what the other
       // tiles now say.
-      // Two days out, so the whole window is still outside the portal's
-      // 24h release and every tile is a schedulable "later" one. One day
-      // out, most of tomorrow is already inside the window and bookable.
       await wait(500);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(400);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(500);
+      await findDayWith('.fr-slot--later');
       const tiles = () => [...document.querySelectorAll('.fr-slot--later')];
+      // Scheduling now goes through a confirm panel rather than one tap,
+      // so each attempt is tile -> Autobook.
       for (const i of [0, 1, 2]) {
         tiles()[i]?.click();
+        await wait(250);
+        document.querySelector('.fr-confirm-panel .fr-btn--primary')?.click();
         await wait(300);
       }
       const out = [];
@@ -600,7 +666,8 @@
       // banner screenshot shows one result and there may be two.
       await wait(1200);
       const out = JSON.parse(localStorage.getItem('flame-auto-book') || '[]')
-        .map((i) => `${i.id} ${i.state}: ${i.message}`);
+        .map((i) => `${i.id.slice(0, 10)} ${i.date} ${i.startTime} ${i.state}`
+          + (i.repeat ? ' [daily]' : '') + (i.message ? ' :: ' + i.message.slice(0, 40) : ''));
       out.push(`banners: ${document.querySelectorAll('.fr-banner').length}`);
       const pre = document.createElement('pre');
       pre.id = 'measure';
@@ -612,11 +679,9 @@
       // 3 PM gym are two resourceIds and one resource class, so scheduling
       // one has to close the day on the other.
       await wait(500);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(400);
-      document.querySelectorAll('.fr-daynav-btn')[1].click();
-      await wait(500);
-      document.querySelector('.fr-slot--later')?.click();
+      (await findDayWith('.fr-slot--later'))?.click();
+      await wait(250);
+      document.querySelector('.fr-confirm-panel .fr-btn--primary')?.click();
       await wait(400);
       document.querySelector('.fr-picker-btn').click();
       await wait(200);
@@ -665,6 +730,10 @@
         '.fr-success-panel', '.fr-error-panel',
         '.fr-banner-note',      // the portal's own refusal string, verbatim
         '.fr-rail-meta',
+        // Explanatory prose in the confirm panels: what autobook does and
+        // does not promise, and what a daily repeat means. Truncating an
+        // explanation makes it useless.
+        '.fr-confirm-note', '.fr-confirm-warn', '.fr-switch-hint',
         // Two lines by design (-webkit-line-clamp: 2), and it fits: a
         // 55-minute class block is 72px, and venue + two title lines +
         // professor measure 72px exactly (?auto=calfit). The block clips,
@@ -682,19 +751,13 @@
         document.querySelector('.fr-cancel-wrap .fr-btn--ghost')?.click();
       }
       if (auto === 'wrapcheck-confirm') {
-        // Today's gym window has usually already passed by the time this
-        // runs, so step to tomorrow, where the stub's 24h model does list
-        // bookable slots, before opening the confirm panel.
         await wait(500);
-        document.querySelectorAll('.fr-daynav-btn')[1].click();
-        await wait(500);
-        document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)')?.click();
+        (await findDayWith('.fr-slot:not(:disabled):not(.fr-slot--later)'))?.click();
       }
       if (auto === 'wrapcheck-sched') {
         await wait(500);
-        document.querySelectorAll('.fr-daynav-btn')[1].click();
-        await wait(500);
-        document.querySelector('.fr-slot--later')?.click();
+        (await findDayWith('.fr-slot--later'))?.click();
+        await wait(300); // the autobook confirm panel
       }
       await wait(700);
       const root = document.getElementById('flame-reskin-root');
