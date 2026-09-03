@@ -10,5 +10,9 @@
   },
   "devDependencies": {
     "rollup": "^4.63.1"
+  },
+  "dependencies": {
+    "frida-compile": "^19.0.5",
+    "frida-java-bridge": "^7.0.13"
   }
 }
