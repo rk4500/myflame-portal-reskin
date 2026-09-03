@@ -202,6 +202,28 @@ export async function renderBookSlot(token) {
           slotBtn.setAttribute('aria-disabled', 'true');
           slotBtn.title = blockedReason(claimedBy, bySeries);
         }
+        let cancelTimer = null;
+        let confirmingCancel = false;
+
+        function resetCancelState() {
+          if (!confirmingCancel) return;
+          confirmingCancel = false;
+          if (cancelTimer) {
+            clearTimeout(cancelTimer);
+            cancelTimer = null;
+          }
+          slotBtn.classList.remove('is-confirming-cancel');
+          const cap = slotBtn.querySelector('.fr-slot-cap');
+          if (cap) cap.textContent = 'Auto-booking ✓';
+          document.removeEventListener('click', handleOutsideClick);
+        }
+
+        function handleOutsideClick(e) {
+          if (!slotBtn.contains(e.target)) {
+            resetCancelState();
+          }
+        }
+
         slotBtn.addEventListener('click', () => {
           if (blocked) {
             showNotice({
@@ -214,7 +236,26 @@ export async function renderBookSlot(token) {
             const mine = loadIntents().find(
               (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && i.startTime === sl.startTime
             );
-            if (mine) removeIntent(mine.id);
+            if (!mine) return;
+
+            if (!confirmingCancel) {
+              confirmingCancel = true;
+              slotBtn.classList.add('is-confirming-cancel');
+              const cap = slotBtn.querySelector('.fr-slot-cap');
+              if (cap) cap.textContent = 'Tap to Stop';
+
+              setTimeout(() => {
+                if (confirmingCancel) document.addEventListener('click', handleOutsideClick);
+              }, 0);
+
+              cancelTimer = setTimeout(() => {
+                resetCancelState();
+              }, 3000);
+              return;
+            }
+
+            resetCancelState();
+            removeIntent(mine.id);
             refreshAvailability();
             return;
           }
@@ -257,10 +298,10 @@ export async function renderBookSlot(token) {
     const facility = facilities[bookState.categoryIdx];
     const needsDetails = facility.facility_Name !== 'Sports Facilities';
     const purposeInput = needsDetails
-      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Purpose (optional)' })
+      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Purpose' })
       : null;
     const attendeeInput = needsDetails
-      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee (optional)' })
+      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee' })
       : null;
     const submitBtn = el('button', { class: 'fr-btn fr-btn--primary fr-confirm-submit', type: 'button', text: 'Confirm booking' });
 
@@ -359,10 +400,10 @@ export async function renderBookSlot(token) {
     const facility = facilities[bookState.categoryIdx];
     const needsDetails = facility.facility_Name !== 'Sports Facilities';
     const purposeInput = needsDetails
-      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Purpose (optional)' })
+      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Purpose' })
       : null;
     const attendeeInput = needsDetails
-      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee (optional)' })
+      ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee' })
       : null;
     const isoDate = isoDateLocal(bookState.date);
     const futures = futureDailyIntents(resource.name, isoDate);

@@ -400,6 +400,11 @@
 .fr-slot--later:hover { border-color: var(--text-secondary); }
 .fr-slot--later.is-scheduled { border-style: solid; border-color: var(--accent); }
 .fr-slot--later.is-scheduled .fr-slot-cap { color: var(--accent); }
+.fr-slot.is-confirming-cancel {
+  border-style: solid; border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, var(--bg-elevated));
+}
+.fr-slot.is-confirming-cancel .fr-slot-cap { color: var(--danger); font-weight: 600; }
 
 .fr-sched { margin-top: 28px; }
 .fr-sched-title {
