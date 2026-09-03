@@ -390,7 +390,12 @@ export async function renderBookSlot(token) {
       ])
     );
     requestAnimationFrame(() => {
-      submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(() => {
+        const scrollParent = confirmWrap.closest('.fr-content') || confirmWrap.closest('.fr-page') || document.documentElement;
+        scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' });
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 40);
     });
   }
 
@@ -486,7 +491,12 @@ export async function renderBookSlot(token) {
       ])
     );
     requestAnimationFrame(() => {
-      submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(() => {
+        const scrollParent = confirmWrap.closest('.fr-content') || confirmWrap.closest('.fr-page') || document.documentElement;
+        scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' });
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 40);
     });
   }
 
