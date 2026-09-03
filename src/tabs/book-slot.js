@@ -380,6 +380,27 @@ export async function renderBookSlot(token) {
         ])
       : null;
 
+  function scrollToConfirm(submitBtn, confirmWrap) {
+    const doScroll = () => {
+      const scrollParent = confirmWrap.closest('.fr-content') || confirmWrap.closest('.fr-page') || document.documentElement;
+      if (scrollParent) {
+        scrollParent.scrollTop = scrollParent.scrollHeight;
+        if (scrollParent.scrollTo) {
+          scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' });
+        }
+      }
+      window.scrollTo({ top: 999999, behavior: 'smooth' });
+      if (submitBtn && submitBtn.scrollIntoView) {
+        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    };
+
+    doScroll();
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 60);
+    setTimeout(doScroll, 200);
+  }
+
     confirmWrap.replaceChildren(
       el('div', { class: 'fr-confirm-panel' }, [
         header,
@@ -389,14 +410,7 @@ export async function renderBookSlot(token) {
         submitBtn,
       ])
     );
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const scrollParent = confirmWrap.closest('.fr-content') || confirmWrap.closest('.fr-page') || document.documentElement;
-        scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' });
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 40);
-    });
+    scrollToConfirm(submitBtn, confirmWrap);
   }
 
   // The autobook twin of openConfirm. Same panel, same fields, because it
@@ -490,14 +504,7 @@ export async function renderBookSlot(token) {
         submitBtn,
       ])
     );
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const scrollParent = confirmWrap.closest('.fr-content') || confirmWrap.closest('.fr-page') || document.documentElement;
-        scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' });
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 40);
-    });
+    scrollToConfirm(submitBtn, confirmWrap);
   }
 
   facilities.forEach((facility, idx) => {

@@ -526,13 +526,14 @@
   margin-top: 20px; padding: 18px 20px; background: var(--bg-elevated);
   border: 1px solid var(--border); border-radius: 14px;
   display: flex; flex-direction: column; gap: 12px;
+  scroll-margin-bottom: 120px;
 }
 .fr-confirm-header {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .fr-confirm-panel-title { font-weight: 600; font-size: 0.9375rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fr-confirm-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.fr-confirm-submit { width: 100%; height: 42px; font-weight: 600; justify-content: center; }
+.fr-confirm-submit { width: 100%; height: 42px; font-weight: 600; justify-content: center; scroll-margin-bottom: 120px; }
 .fr-success-panel { background: var(--success-bg); color: var(--success); border-radius: 10px; padding: 14px 16px; font-weight: 500; margin-top: 24px; }
 /* createReservation returns state:SUCCESS with a plain message string even
    when the booking was refused (e.g. "More than 1 bookings are not allowed
