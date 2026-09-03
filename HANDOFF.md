@@ -766,3 +766,18 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   > `Replaces your daily autobook starting Sun, Sep 6 (8:00 AM – 9:00 AM).`
 - **Automatic Replacement in `scheduleIntent`**: Confirming the new daily autobook automatically removes any future daily series for that resource class before saving the new intent. Because the earlier daily series runs indefinitely, all future dates remain covered without creating clashing or redundant intents.
 
+### 3. Impeccable Refactor of Booking Confirmation Panel
+- **Integrated Header Toolbar (`.fr-confirm-header`)**: Placed the slot time title (`Autobook 8:00 AM – 9:00 AM`) on the left and the compact `Daily` toggle switch inline on the right side of the header row, saving vertical space.
+- **Form Inputs Grid (`.fr-confirm-inputs`)**: Purpose and Co-attendee input fields rendered in a 2-column grid (`1fr 1fr`), collapsing gracefully on narrow mobile screens.
+- **Micro-Alert Callout Box (`.fr-confirm-warn`)**: Clash warnings rendered as a styled alert box with subtle red background tinting (`color-mix(in srgb, var(--danger) 12%, var(--bg-elevated))`), 1px border, and 8px border-radius.
+- **Impeccable Typography & Micro-Copy**:
+  - Applied `text-wrap: pretty` to `.fr-confirm-note` and `.fr-confirm-warn` to prevent lonely single-word wrap orphans.
+  - Tightened helper copy strings: `"Currently full. Auto-checks for cancellations."` & `"Attempts booking as soon as window opens."`
+- **Bottom Action Button Anchor**: Primary `Autobook` / `Confirm booking` button styled as a full-width bottom anchor button (42px height, bold 600 weight).
+
+### 4. Fix Slot Kind Classification for Future Dates (>24h)
+- **Problem**: In `refreshAvailability`, slots returned in `availabilitySlots` by the portal API were unconditionally tagged `kind: 'open'`. For dates >24 hours away (where the portal's 24h booking window has not opened yet), this caused:
+  1. Slots on future dates to incorrectly open normal booking (`openConfirm`) instead of autobooking (`openAutoConfirm`).
+  2. Blocked checks (`sl.kind === 'later' && !!claimedBy`) to evaluate as `false`, preventing blocked/greyed-out styling from applying on future days covered by a daily autobook.
+- **Fix**: Updated slot parsing to compute `opensAt = start.getTime() - BOOKING_WINDOW_MS`. If `opensAt > Date.now()` (window not open yet), the slot is classified as `kind: 'later'`. This restores correct autobooking prompt behavior for future days and ensures greyed-out blocked tiles render properly when covered by an autobook.
+

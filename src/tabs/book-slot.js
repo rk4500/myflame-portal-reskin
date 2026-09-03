@@ -121,7 +121,12 @@ export async function renderBookSlot(token) {
     const now = Date.now();
     const bookable = new Map(slots.map((sl) => [sl.startTime, sl]));
     const timeline = [];
-    for (const sl of slots) timeline.push({ ...sl, kind: 'open' });
+    for (const sl of slots) {
+      const start = slotStartDate(isoDate, sl.startTime);
+      const opensAt = start ? start.getTime() - BOOKING_WINDOW_MS : 0;
+      const isOpenWindow = opensAt <= now;
+      timeline.push({ ...sl, kind: isOpenWindow ? 'open' : 'later', opensAt });
+    }
     for (const known of knownSlotTimes(resource)) {
       if (bookable.has(known.startTime)) continue;
       const start = slotStartDate(isoDate, known.startTime);
@@ -257,7 +262,7 @@ export async function renderBookSlot(token) {
     const attendeeInput = needsDetails
       ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee (optional)' })
       : null;
-    const submitBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'button', text: 'Confirm booking' });
+    const submitBtn = el('button', { class: 'fr-btn fr-btn--primary fr-confirm-submit', type: 'button', text: 'Confirm booking' });
 
     submitBtn.addEventListener('click', async () => {
       submitBtn.disabled = true;
@@ -323,13 +328,23 @@ export async function renderBookSlot(token) {
         })
       : null;
 
+    const header = el('div', { class: 'fr-confirm-header' }, [
+      el('p', { class: 'fr-confirm-panel-title', text: `Book ${compactTimeRange(slot.startTime, slot.endTime)}` }),
+    ]);
+
+    const inputsWrap = (purposeInput || attendeeInput)
+      ? el('div', { class: 'fr-confirm-inputs' }, [
+          ...(purposeInput ? [purposeInput] : []),
+          ...(attendeeInput ? [attendeeInput] : []),
+        ])
+      : null;
+
     confirmWrap.replaceChildren(
       el('div', { class: 'fr-confirm-panel' }, [
-        el('p', { class: 'fr-confirm-panel-title', text: compactTimeRange(slot.startTime, slot.endTime) }),
+        header,
+        ...(inputsWrap ? [inputsWrap] : []),
         ...(warning ? [warning] : []),
         conflictSlot,
-        ...(purposeInput ? [purposeInput] : []),
-        ...(attendeeInput ? [attendeeInput] : []),
         submitBtn,
       ])
     );
@@ -359,27 +374,30 @@ export async function renderBookSlot(token) {
         const first = futures[0];
         const parts = first.date.split('-').map(Number);
         const firstDate = new Date(parts[0], parts[1] - 1, parts[2]);
-        clashWarn.textContent = `Replaces your daily autobook starting ${dayLabel(firstDate)} (${compactTimeRange(first.startTime, first.endTime)}).`;
+        clashWarn.textContent = `Replaces daily autobook from ${dayLabel(firstDate)} (${compactTimeRange(first.startTime, first.endTime)}).`;
         clashWarn.style.display = 'block';
       } else {
         clashWarn.style.display = 'none';
       }
     }
 
-    const repeatSwitch = buildSwitch({ label: 'Repeat daily', onChange: updateClashWarn });
+    const repeatSwitch = buildSwitch({ label: 'Daily', onChange: updateClashWarn });
     updateClashWarn();
 
-    const submitBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'button', text: 'Autobook' });
+    const submitBtn = el('button', { class: 'fr-btn fr-btn--primary fr-confirm-submit', type: 'button', text: 'Autobook' });
+
+    const header = el('div', { class: 'fr-confirm-header' }, [
+      el('p', { class: 'fr-confirm-panel-title', text: `Autobook ${compactTimeRange(slot.startTime, slot.endTime)}` }),
+      repeatSwitch.el,
+    ]);
 
     // What scheduling actually promises, said plainly. It watches and
     // retries; it does not reserve anything, and a full slot stays full
     // until somebody cancels.
     const note = el('p', {
       class: 'fr-confirm-note',
-      // One line. The only distinction worth making is "tries" versus
-      // "reserves"; the rest was padding nobody reads on a confirm panel.
-      text: windowOpen ? 'Full right now. Keeps checking and books it if it frees up.'
-                       : 'Tries as soon as it opens. Not a reservation.',
+      text: windowOpen ? 'Currently full. Auto-checks for cancellations.'
+                       : 'Attempts booking as soon as window opens.',
     });
 
     submitBtn.addEventListener('click', () => {
@@ -407,14 +425,19 @@ export async function renderBookSlot(token) {
       refreshAvailability();
     });
 
+    const inputsWrap = (purposeInput || attendeeInput)
+      ? el('div', { class: 'fr-confirm-inputs' }, [
+          ...(purposeInput ? [purposeInput] : []),
+          ...(attendeeInput ? [attendeeInput] : []),
+        ])
+      : null;
+
     confirmWrap.replaceChildren(
       el('div', { class: 'fr-confirm-panel' }, [
-        el('p', { class: 'fr-confirm-panel-title', text: `Autobook ${compactTimeRange(slot.startTime, slot.endTime)}` }),
+        header,
+        ...(inputsWrap ? [inputsWrap] : []),
         note,
         clashWarn,
-        ...(purposeInput ? [purposeInput] : []),
-        ...(attendeeInput ? [attendeeInput] : []),
-        repeatSwitch.el,
         submitBtn,
       ])
     );

@@ -421,13 +421,12 @@
    match their height, which a native checkbox will not do without more
    overriding than the control is worth. */
 .fr-switch-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  grid-column: 1 / -1;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.fr-switch-label { font-size: 0.875rem; }
+.fr-switch-label { font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .fr-switch-hint { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
 .fr-switch {
-  flex-shrink: 0; width: 44px; height: 26px; padding: 3px;
+  flex-shrink: 0; width: 42px; height: 24px; padding: 2px;
   border-radius: 999px; border: 1px solid var(--border);
   background: var(--bg-elevated-2); cursor: pointer;
   transition: background-color 140ms ease, border-color 140ms ease;
@@ -445,12 +444,15 @@
    someone cancels. Saying so once, here, is cheaper than a support
    conversation with yourself in three weeks. */
 .fr-confirm-note {
-  grid-column: 1 / -1; margin: 0; font-size: 0.8125rem;
-  color: var(--text-secondary); line-height: 1.45;
+  margin: 0; font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.45;
+  text-wrap: pretty;
 }
 .fr-confirm-warn {
-  grid-column: 1 / -1; margin: 0; font-size: 0.8125rem; line-height: 1.45;
-  color: var(--danger);
+  margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  padding: 10px 12px; border-radius: 8px;
+  text-wrap: pretty;
 }
 
 /* Auto-booking results land while you are somewhere else in the app, so
@@ -516,10 +518,16 @@
 .fr-banner-note { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
 
 .fr-confirm-panel {
-  margin-top: 24px; padding: 20px; background: var(--bg-elevated); border-radius: 14px;
-  display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end;
+  margin-top: 20px; padding: 18px 20px; background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 14px;
+  display: flex; flex-direction: column; gap: 12px;
 }
-.fr-confirm-panel-title { grid-column: 1 / -1; font-weight: 600; margin: 0 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-confirm-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.fr-confirm-panel-title { font-weight: 600; font-size: 0.9375rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-confirm-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fr-confirm-submit { width: 100%; height: 42px; font-weight: 600; justify-content: center; }
 .fr-success-panel { background: var(--success-bg); color: var(--success); border-radius: 10px; padding: 14px 16px; font-weight: 500; margin-top: 24px; }
 /* createReservation returns state:SUCCESS with a plain message string even
    when the booking was refused (e.g. "More than 1 bookings are not allowed

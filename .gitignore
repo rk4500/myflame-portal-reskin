@@ -26,3 +26,9 @@ node_modules/
 
 # machine-local Claude Code settings
 .claude/settings.local.json
+
+# Claude agents skills
+.claude/skills/
+
+# LLM agents cache and configurations
+.agents/
