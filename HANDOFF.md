@@ -865,3 +865,36 @@ Logcat cleared *before* launching, which is what the previous entry said to do, 
 
 **One thing to know about the dependencies**: `frida-compile` and `frida-java-bridge` are now declared in the root `package.json` under `dependencies` and committed. That install happened outside this session's commands, but it matches where the binaries actually resolve from (`<repo>/node_modules`) and makes the pipeline's requirements explicit instead of relying on a stray `npm install` somebody ran once, so it is kept.
 
+## Skeletons on Home and Book Slot, and a repaint that stopped happening (2026-09-04, branch `skeleton-loaders`)
+
+### The rule the skeletons follow
+
+A skeleton is the **real element** with its unknown text swapped for a shimmering block of the same metrics — never a lookalike assembled from bare divs. `.fr-skel` is an inline-block holding a non-breaking space, so its line box is exactly one line of whatever type its parent uses: same font, same line-height, same baseline. Width is the only thing a caller passes, in `ch`, and it is a guess about content length that nothing in the layout depends on. That is what makes the loading and loaded screenshots line up row for row instead of settling into place.
+
+Shimmer is a gradient sweep on `background-position`, 1400ms linear, disabled under `prefers-reduced-motion`.
+
+### Home
+
+- **Cold start only** — the title, the date strip and both headings need no data at all, so they are real from the first frame; three class rows and one booking row shimmer. Three, because that is a normal day and a skeleton that guesses high leaves a hole when the data lands short. The strip's has-events dots are the one thing that appears late, since which days carry classes is exactly what is not known yet.
+- **The jitter is gone.** The stale cache paints, the request still goes out, and the answer is now compared against what is on screen (`sameData`, in `persist.js`) and **dropped when identical**. The timetable is semester-static, so the common case was tearing down the entire page to rebuild the same page a second after the tab opened. That was the jitter.
+- **Upcoming bookings no longer disappears when empty.** It used to be omitted entirely, which left the page looking like it had ended early. It now says nothing is booked and offers the Book Slot tab — `renderEmpty` takes an optional `{ label, onClick }` action for this.
+
+### Book Slot
+
+The whole tab used to wait on `getResources` before painting a single pixel, and everything above the slot grid is drawn from that one list.
+
+- **The resource list is cached on its own clock.** `flame-resources-cache`, 7-day TTL, separate from Home's blob because the two expire for different reasons: a day-old class list is nearly right, and a week-old resource list is simply correct — the gym and the classrooms do not change during a semester. Cached list paints immediately, the request still goes out, and only an answer that differs touches the UI (a plain repaint, since a renamed resource changes the rail and the picker together).
+- **The slot grid's times are not a guess.** `knownSlotTimes(resource)` already derived them from the resource's own operating window — `Gym ( 6:00 am to 2:00 pm slot )` is eight hourly slots — falling back to whatever that resource last offered. So the grid is drawn with real labels in the real number of cards, and only the capacity line, the one thing that genuinely needs the server, shimmers.
+- **The cards are filled, not rebuilt.** `createSlotShell` builds the box; when the answer lands those same nodes are looked up by `dataset.start` and mutated in place. Nothing about the grid moves. A card is only created late when the skeleton could not predict it, and anything predicted that the day did not have is dropped.
+- **The claim note and the scheduled-autobook list are in the first paint too.** Both come from intents in `localStorage`, not from a request, so holding them back only meant pushing the grid down a line at the worst moment.
+- The spinner is still the honest answer in the one case where nothing can be predicted: a resource with no operating window in its name and nothing remembered.
+
+### Answered by the user, not assumed
+
+Resource/day switches inside the tab get the **same skeleton every time** (not a dimmed hold, not a delayed one). Placeholders **shimmer** rather than pulse. And the empty bookings section should stay on the page with something to say, which is where the empty state's copy and its Book Slot button came from.
+
+### Verification
+
+Screenshots at 390x780 and 1280x900, loading against settled, on both tabs: rows and cards land in identical positions. One defect found and fixed in that pass — skeleton cards inherited `.fr-slot:disabled { opacity: 0.4 }`, which is the *blocked* look and also dimmed the card's time, the one thing already true. Targeted scenarios on the touched paths (`book-confirm`, `resource-picker-open`, `confirm-scroll`, `picker-reselect`, `autopanel`, `measure`): no errors. Impeccable's mechanical detector over the changed files: clean.
+
+Built and installed on the phone. Not merged to `master` — the branch is `skeleton-loaders`.
