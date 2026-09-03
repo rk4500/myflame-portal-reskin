@@ -217,33 +217,98 @@ export function buildScheduledList(onChange) {
 
 // Results surface wherever you happen to be when they land, since the
 // booking fires while you are doing something else entirely.
+//
+// Painted incrementally rather than rebuilt: replaceChildren() would
+// re-run the entrance animation on every remaining banner each time one
+// was dismissed, which reads as the whole stack flinching. Each banner
+// owns a slot keyed by its intent id, and only genuinely new ones animate
+// in, only genuinely gone ones animate out.
+
+// Long enough to cover the CSS transitions above, with room to spare. The
+// timer is a fallback, not the mechanism — transitionend does the real
+// work whenever the page is actually rendering.
+const BANNER_EXIT_MS = 400;
+
+function buildBannerSlot(intent) {
+  const slot = el('div', { class: 'fr-banner-slot' });
+  slot.dataset.intent = intent.id;
+  const clip = el('div', { class: 'fr-banner-clip' });
+  const banner = el('div', { class: `fr-banner${intent.state === 'done' ? ' is-good' : ' is-bad'}` });
+  banner.appendChild(el('div', { class: 'fr-banner-main' }, [
+    el('p', {
+      class: 'fr-banner-title',
+      text: intent.state === 'done' ? `Booked ${intentSummary(intent)}` : `Couldn't book ${intentSummary(intent)}`,
+    }),
+    el('p', { class: 'fr-banner-note', text: intent.message || '' }),
+  ]));
+  const ok = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Dismiss' });
+  ok.addEventListener('click', () => {
+    const all = loadIntents();
+    const found = all.find((i) => i.id === intent.id);
+    if (found) found.seen = true;
+    saveIntents(all.filter((i) => i.state === 'waiting' || !i.seen));
+    // Repaint decides what leaves; the animation lives in one place.
+    paintAutoBookBanner();
+  });
+  banner.appendChild(ok);
+  clip.appendChild(banner);
+  slot.appendChild(clip);
+  return slot;
+}
+
+function openBannerSlot(slot) {
+  // Reading a layout property flushes pending style, so the browser has a
+  // "closed" frame to transition *from*. Deliberately not
+  // requestAnimationFrame: runAutoBook can land while the Android boot
+  // cover is still up, and an obscured WebView may not produce frames at
+  // all — rAF would never fire and the banner would stay collapsed. A
+  // forced reflow needs no frame.
+  void slot.offsetHeight;
+  slot.classList.add('is-open');
+}
+
+function closeBannerSlot(slot) {
+  if (slot.dataset.leaving === '1') return;
+  slot.dataset.leaving = '1';
+  slot.classList.remove('is-open');
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    slot.remove();
+  };
+  // Whichever comes first: the real transition ending, or the fallback for
+  // when transitions never run (reduced motion, a tab that is not
+  // rendering). Without the fallback a slot could sit at zero height
+  // forever, invisible but still in the DOM.
+  slot.addEventListener('transitionend', (e) => {
+    if (e.target === slot && e.propertyName === 'grid-template-rows') finish();
+  });
+  setTimeout(finish, BANNER_EXIT_MS);
+}
+
 export function paintAutoBookBanner() {
   if (!ui.bannerHost) return;
-  const list = loadIntents();
-  const unseen = list.filter((i) => (i.state === 'done' || i.state === 'failed') && !i.seen);
-  if (!unseen.length) {
-    ui.bannerHost.replaceChildren();
-    return;
+  const unseen = loadIntents().filter((i) => (i.state === 'done' || i.state === 'failed') && !i.seen);
+  const wanted = new Set(unseen.map((i) => i.id));
+  const slots = Array.from(ui.bannerHost.children);
+
+  // Gone: animate out. Already-leaving slots are left alone.
+  for (const slot of slots) {
+    if (!wanted.has(slot.dataset.intent)) closeBannerSlot(slot);
   }
-  const wrap = el('div', {});
+
+  // New: append and animate in. A slot on its way out does not count as
+  // present, so a result that somehow returns gets a fresh entrance.
+  const present = new Set(
+    slots.filter((s) => s.dataset.leaving !== '1').map((s) => s.dataset.intent)
+  );
   for (const intent of unseen) {
-    const banner = el('div', { class: `fr-banner${intent.state === 'done' ? ' is-good' : ' is-bad'}` });
-    banner.appendChild(el('div', { class: 'fr-banner-main' }, [
-      el('p', { class: 'fr-banner-title', text: intent.state === 'done' ? `Booked ${intentSummary(intent)}` : `Couldn't book ${intentSummary(intent)}` }),
-      el('p', { class: 'fr-banner-note', text: intent.message || '' }),
-    ]));
-    const ok = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Dismiss' });
-    ok.addEventListener('click', () => {
-      const all = loadIntents();
-      const found = all.find((i) => i.id === intent.id);
-      if (found) found.seen = true;
-      saveIntents(all.filter((i) => i.state === 'waiting' || !i.seen));
-      paintAutoBookBanner();
-    });
-    banner.appendChild(ok);
-    wrap.appendChild(banner);
+    if (present.has(intent.id)) continue;
+    const slot = buildBannerSlot(intent);
+    ui.bannerHost.appendChild(slot);
+    openBannerSlot(slot);
   }
-  ui.bannerHost.replaceChildren(wrap);
 }
 
 let autoBookRunning = false;

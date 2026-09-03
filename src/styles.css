@@ -408,12 +408,50 @@
 /* Auto-booking results land while you are somewhere else in the app, so
    they are announced above whatever tab is open rather than buried in the
    one that caused them. */
-.fr-banner-host { padding: 12px 48px 0; }
+/* An overlay, not a row in the shell. It used to sit in normal flow
+   between the nav and .fr-content, so a result arriving shoved the whole
+   page down — the same layout-shift this codebase already refuses
+   elsewhere (see attachCancelConfirm, where three designs were rejected
+   for moving the row they appeared in). A booking result is a
+   notification: it should arrive over the page, not rearrange it.
+   pointer-events are off on the host so the gaps around a banner stay
+   clickable, and back on for the banner itself. */
+.fr-banner-host {
+  position: fixed;
+  top: 72px;
+  right: 48px;
+  width: min(440px, calc(100vw - 96px));
+  z-index: 30;
+  pointer-events: none;
+}
 .fr-banner-host:empty { display: none; }
+
+/* One slot per banner, animating its own height. Nothing outside the
+   overlay depends on this any more, but with two banners stacked it is
+   what makes dismissing the top one slide the second up instead of
+   snapping it. grid-template-rows 0fr -> 1fr is the reliable way to
+   transition to a content-derived height; the clip needs min-height: 0 or
+   the grid item refuses to shrink below its content. */
+.fr-banner-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fr-banner-slot.is-open { grid-template-rows: 1fr; }
+.fr-banner-clip { overflow: hidden; min-height: 0; }
 .fr-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 12px 0 0;
+  /* Opaque and lifted: it now floats over real content, so it needs to
+     read as being above the page rather than part of it. */
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 200ms ease, transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+.fr-banner-slot.is-open .fr-banner { opacity: 1; transform: none; }
 .fr-banner.is-good { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); background: var(--success-bg); }
 .fr-banner.is-bad { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); background: var(--danger-bg); }
 .fr-banner-main { min-width: 0; }
@@ -499,7 +537,17 @@ body.flame-reskin-off #flame-reskin-toggle {
   .fr-nav-btn { flex-direction: column; gap: 4px; padding: 6px 10px; }
   .fr-nav-label { font-size: 0.6875rem; }
   .fr-content { padding: 12px 20px calc(96px + var(--flame-navbar-inset)); }
-  .fr-banner-host { padding: 12px 20px 0; }
+  /* Bottom on mobile, sitting just above the tab bar: at the top it
+     landed straight on the page heading, and a result you can dismiss
+     without moving your thumb off the nav is the better answer anyway.
+     Same reason Android puts snackbars there. */
+  .fr-banner-host {
+    top: auto;
+    bottom: calc(76px + var(--flame-navbar-inset));
+    right: 20px; left: 20px; width: auto;
+  }
+  /* Rising from below, since that is now the edge it comes from. */
+  .fr-banner { transform: translateY(10px); margin: 0 0 12px; }
   .fr-book-layout { grid-template-columns: minmax(0, 1fr); }
   .fr-datestrip { gap: 4px; }
   .fr-datestrip-cells { gap: 4px; }
@@ -540,4 +588,12 @@ body.flame-reskin-off #flame-reskin-toggle {
      week mode to force this. */
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
+}
+
+/* A booking result is worth noticing, but not worth insisting on for
+   someone who has asked the system for less movement. The end states are
+   identical, only the travel is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .fr-banner-slot, .fr-banner { transition: none; }
+  .fr-banner { transform: none; }
 }

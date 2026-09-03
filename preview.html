@@ -474,6 +474,63 @@
       pre.textContent = out.join('\n');
       document.body.appendChild(pre);
     }
+    if (auto === 'shiftcheck') {
+      // The point of an overlay: a banner arriving must not move the page.
+      // Run this with and without ?seed=due and compare — identical
+      // numbers mean nothing reflowed.
+      await wait(700);
+      const t = document.querySelector('.fr-page-title');
+      const c = document.querySelector('.fr-content');
+      const b = document.querySelector('.fr-banner');
+      const out = [
+        'page title top:  ' + (t ? Math.round(t.getBoundingClientRect().top) : 'none'),
+        'content top:     ' + (c ? Math.round(c.getBoundingClientRect().top) : 'none'),
+        'banner present:  ' + !!b,
+        'banner top:      ' + (b ? Math.round(b.getBoundingClientRect().top) : 'n/a'),
+        'banner overlaps content: ' + (b && c
+          ? (b.getBoundingClientRect().bottom > c.getBoundingClientRect().top) : 'n/a'),
+      ];
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'banner-anim') {
+      // Sampling heights over time does not work here: --virtual-time-budget
+      // fast-forwards the clock, so a transition is already finished by the
+      // first sample. Assert on the transition itself instead — that it is
+      // declared, that the slot starts closed and opens, and that clicking
+      // Dismiss actually starts a running animation rather than yanking the
+      // node out. getAnimations() answers that synchronously.
+      const out = [];
+      await wait(600);
+      const slot = document.querySelector('.fr-banner-slot');
+      if (!slot) {
+        out.push('NO BANNER RENDERED');
+      } else {
+        const cs = getComputedStyle(slot);
+        const banner = slot.querySelector('.fr-banner');
+        const bcs = getComputedStyle(banner);
+        out.push('slot transition:   ' + cs.transitionProperty + ' / ' + cs.transitionDuration);
+        out.push('banner transition: ' + bcs.transitionProperty + ' / ' + bcs.transitionDuration);
+        out.push('opened (is-open):  ' + slot.classList.contains('is-open'));
+        out.push('settled height:    ' + Math.round(slot.getBoundingClientRect().height) + 'px');
+        out.push('banner opacity:    ' + bcs.opacity + ', transform: ' + bcs.transform);
+
+        // Exit, measured synchronously right after the click.
+        document.querySelector('.fr-banner .fr-btn').click();
+        out.push('after Dismiss — is-open: ' + slot.classList.contains('is-open')
+          + ', leaving: ' + slot.dataset.leaving
+          + ', running animations: ' + slot.getAnimations().length);
+        out.push('still in DOM immediately: ' + document.body.contains(slot));
+        await wait(700);
+        out.push('removed after exit: ' + (document.querySelectorAll('.fr-banner-slot').length === 0));
+      }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
     if (auto === 'authstate') {
       // What did the script start with, and what is it holding now? A
       // stored token should be in hand before any request goes out.
