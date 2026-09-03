@@ -305,31 +305,61 @@ export function buildScheduledList(onChange) {
 // work whenever the page is actually rendering.
 const BANNER_EXIT_MS = 400;
 
-function buildBannerSlot(intent) {
+// The banner itself, independent of what raised it. A settled intent is
+// one caller; explaining why a slot is greyed out is another.
+function buildBannerSlot({ tone, title, note, onDismiss }) {
   const slot = el('div', { class: 'fr-banner-slot' });
-  slot.dataset.intent = intent.id;
   const clip = el('div', { class: 'fr-banner-clip' });
-  const banner = el('div', { class: `fr-banner${intent.state === 'done' ? ' is-good' : ' is-bad'}` });
+  const banner = el('div', { class: `fr-banner ${tone}` });
   banner.appendChild(el('div', { class: 'fr-banner-main' }, [
-    el('p', {
-      class: 'fr-banner-title',
-      text: intent.state === 'done' ? `Booked ${intentSummary(intent)}` : `Couldn't book ${intentSummary(intent)}`,
-    }),
-    el('p', { class: 'fr-banner-note', text: intent.message || '' }),
+    el('p', { class: 'fr-banner-title', text: title }),
+    el('p', { class: 'fr-banner-note', text: note || '' }),
   ]));
   const ok = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Dismiss' });
-  ok.addEventListener('click', () => {
-    const all = loadIntents();
-    const found = all.find((i) => i.id === intent.id);
-    if (found) found.seen = true;
-    saveIntents(all.filter((i) => i.state === 'waiting' || !i.seen));
-    // Repaint decides what leaves; the animation lives in one place.
-    paintAutoBookBanner();
-  });
+  ok.addEventListener('click', () => onDismiss(slot));
   banner.appendChild(ok);
   clip.appendChild(banner);
   slot.appendChild(clip);
   return slot;
+}
+
+function intentBannerSlot(intent) {
+  const slot = buildBannerSlot({
+    tone: intent.state === 'done' ? 'is-good' : 'is-bad',
+    title: intent.state === 'done' ? `Booked ${intentSummary(intent)}` : `Couldn't book ${intentSummary(intent)}`,
+    note: intent.message || '',
+    onDismiss: () => {
+      const all = loadIntents();
+      const found = all.find((i) => i.id === intent.id);
+      if (found) found.seen = true;
+      saveIntents(all.filter((i) => i.state === 'waiting' || !i.seen));
+      // Repaint decides what leaves; the animation lives in one place.
+      paintAutoBookBanner();
+    },
+  });
+  slot.dataset.intent = intent.id;
+  return slot;
+}
+
+// A one-off message in the same place booking results appear. Used to
+// answer "why can't I tap this?" on demand, rather than repeating the
+// reason on every greyed tile in the grid.
+const NOTICE_LINGER_MS = 6000;
+
+export function showNotice({ title, note, tone = 'is-bad' }) {
+  if (!ui.bannerHost) return;
+  const slot = buildBannerSlot({ tone, title, note, onDismiss: closeBannerSlot });
+  slot.dataset.notice = '1';
+  // Replace any previous notice: tapping four greyed tiles should not
+  // stack four identical explanations.
+  for (const other of Array.from(ui.bannerHost.children)) {
+    if (other.dataset.notice === '1') closeBannerSlot(other);
+  }
+  ui.bannerHost.appendChild(slot);
+  openBannerSlot(slot);
+  // Informational and self-inflicted, so it leaves on its own. A booking
+  // result never does — that one you have to see.
+  setTimeout(() => closeBannerSlot(slot), NOTICE_LINGER_MS);
 }
 
 function openBannerSlot(slot) {
@@ -369,8 +399,10 @@ export function paintAutoBookBanner() {
   const wanted = new Set(unseen.map((i) => i.id));
   const slots = Array.from(ui.bannerHost.children);
 
-  // Gone: animate out. Already-leaving slots are left alone.
+  // Gone: animate out. Already-leaving slots are left alone, and notices
+  // are not ours to reconcile — they have their own lifetime.
   for (const slot of slots) {
+    if (slot.dataset.notice === '1') continue;
     if (!wanted.has(slot.dataset.intent)) closeBannerSlot(slot);
   }
 
@@ -381,7 +413,7 @@ export function paintAutoBookBanner() {
   );
   for (const intent of unseen) {
     if (present.has(intent.id)) continue;
-    const slot = buildBannerSlot(intent);
+    const slot = intentBannerSlot(intent);
     ui.bannerHost.appendChild(slot);
     openBannerSlot(slot);
   }

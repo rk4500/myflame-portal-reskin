@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------
 
 import { callAura, resolveUserId } from '../aura.js';
-import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, slotStartDate } from '../autobook.js';
+import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate } from '../autobook.js';
 import { addDays, cleanResourceName, compactTimeRange, dayLabel, formatBookingWhen, isoDateLocal, sameDay, startOfToday } from '../dates.js';
 import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
@@ -71,10 +71,9 @@ export async function renderBookSlot(token) {
 
   // Right: results
   const rightCol = el('div', {});
-  const resultsTitle = el('p', { class: 'fr-book-results-title' });
   const resultsWrap = el('div', {});
   const confirmWrap = el('div', {});
-  rightCol.append(resultsTitle, resultsWrap, confirmWrap);
+  rightCol.append(resultsWrap, confirmWrap);
 
   function currentResource() {
     const facility = facilities[bookState.categoryIdx];
@@ -88,7 +87,6 @@ export async function renderBookSlot(token) {
   }
 
   async function refreshAvailability() {
-    resultsTitle.textContent = `${currentResourceName()} · ${dayLabel(bookState.date)}`;
     resultsWrap.replaceChildren(el('div', { class: 'fr-loading', style: 'padding: 40px 0;' }, [el('div', { class: 'fr-spinner' })]));
     confirmWrap.replaceChildren();
     const resource = currentResource();
@@ -183,25 +181,30 @@ export async function renderBookSlot(token) {
       } else {
         slotBtn.appendChild(el('span', {
           class: 'fr-slot-cap',
-          // bySeries before blocked: a series claiming the day is also
-          // "blocked", but naming a time from another day would read as
-          // nonsense on this one.
+          // A blocked tile says nothing at all. The reason is identical on
+          // every one of them, so printing it down a whole grid is noise;
+          // it is stated once above the grid, and again on tap.
           text: scheduled ? 'Auto-booking ✓'
-            : bySeries ? 'Daily autobook'
-            : blocked ? `${compactTimeRange(claimedBy.startTime, claimedBy.endTime || claimedBy.startTime)} scheduled`
-            // Its window is open and the portal still isn't listing it:
-            // there is simply nothing to take.
             : windowOpen ? 'Slots full'
             : `Opens ${relativeFuture(sl.opensAt)}`,
         }));
         slotBtn.classList.toggle('is-scheduled', scheduled);
         if (blocked) {
-          slotBtn.disabled = true;
-          slotBtn.title = bySeries
-            ? `A daily ${cleanResourceName(resource.name)} autobook already covers this day.`
-            : `Only one ${cleanResourceName(resource.name)} booking a day — stop the scheduled one first.`;
+          // Not `disabled`: a disabled button never fires a click, and
+          // this one has something to say. Looks unavailable, is marked
+          // up as unavailable, still answers when tapped.
+          slotBtn.classList.add('is-blocked');
+          slotBtn.setAttribute('aria-disabled', 'true');
+          slotBtn.title = blockedReason(claimedBy, bySeries);
         }
         slotBtn.addEventListener('click', () => {
+          if (blocked) {
+            showNotice({
+              title: bySeries ? 'Covered by a daily autobook' : 'Already scheduled that day',
+              note: blockedReason(claimedBy, bySeries),
+            });
+            return;
+          }
           if (scheduled) {
             const mine = loadIntents().find(
               (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && i.startTime === sl.startTime
@@ -217,7 +220,25 @@ export async function renderBookSlot(token) {
       }
       grid.appendChild(slotBtn);
     }
-    resultsWrap.replaceChildren(grid, buildScheduledList(refreshAvailability));
+    // Said once, above the grid, so the greying is not a mystery until
+    // something is tapped.
+    const dayClaim = conflictingIntent(resource.name, isoDate);
+    const claimNote = dayClaim
+      ? el('p', { class: 'fr-slot-notice', text: blockedReason(dayClaim, dayClaim.date !== isoDate) })
+      : null;
+    resultsWrap.replaceChildren(
+      ...(claimNote ? [claimNote] : []),
+      grid,
+      buildScheduledList(refreshAvailability)
+    );
+  }
+
+  // One wording, three places: the tooltip, the tap notice, and the line
+  // above the grid. Concise explanation with no repeated date or slot details.
+  function blockedReason(claim, bySeries) {
+    return bySeries
+      ? 'A daily autobook already covers this day. Stop it below to book this day yourself.'
+      : 'An autobook is already scheduled for this day. Stop it below to book this day yourself.';
   }
 
   function openConfirm(slot, claimedBy) {

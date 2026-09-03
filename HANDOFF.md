@@ -746,3 +746,17 @@ One of the edit scripts in this session aborted partway through, so a set of cha
 ### Harness
 
 `?auto=series-covers` (a daily series locks the following day, with the right caption), `?seed=series-clash` + `?auto=seed-result` (a series steps over a hand-claimed day), `?auto=autopanel`, `?auto=confirm-warn`, `?auto=shiftcheck` (an overlay must not move the page), `?auto=banner-anim`. Scenarios that need a bookable or schedulable tile now **hunt for a day that has one** via `findDayWith()` instead of assuming an offset — hardcoding "tomorrow" made them pass or fail depending on the hour.
+
+## Blocked Tile Refinement & UI Polish (2026-09-04)
+
+Refined the UX and visual layout for blocked/autobooked slots based on user feedback.
+
+### 1. Greyed-out/Blocked Tile Captions & Notice Layout
+- **Removed Redundant Line Above Notice**: Removed `resultsTitle` (`<p class="fr-book-results-title">Gym · Today, Sep 4</p>`) above the results section so the notice banner sits cleanly at the top of the slot results, eliminating the redundant title line above the notice.
+- **Restored Slot Status Captions on Greyed Tiles**: Blocked tiles now display their standard status captions (`Opens in Xh`, `Slots full`, or `Auto-booking ✓`) rather than rendering an empty string, removing the awkward blank space under the time text on greyed-out slots.
+- **Notice Above Grid (`.fr-slot-notice`)**: Placed once above the slot grid when a day is covered by an autobook. Styled with dedicated `.fr-slot-notice` styles (`margin: 0 0 16px; padding: 10px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.45;`), giving it proper spacing above the grid.
+- **Simplified Explanation Strings**: Simplified `blockedReason()` strings used in tooltips, tap notices, and the notice banner above the grid:
+  - Daily series: `'A daily autobook already covers this day. Stop it below to book this day yourself.'`
+  - One-off: `'An autobook is already scheduled for this day. Stop it below to book this day yourself.'`
+- **Interactive Explanations on Tap**: Blocked tiles remain clickable (using `.is-blocked` and `aria-disabled="true"`) to trigger a self-dismissing banner notification (`showNotice`) on tap.
+

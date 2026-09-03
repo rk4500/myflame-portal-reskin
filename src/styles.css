@@ -380,8 +380,18 @@
 .fr-slot:hover:not(:disabled) { border-color: var(--text-secondary); }
 .fr-slot.is-selected { border-color: var(--accent); background: var(--bg-elevated-2); }
 .fr-slot:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Looks unavailable, still answers when tapped — a real `disabled` button
+   swallows the click, and these have a reason to give. */
+.fr-slot.is-blocked { opacity: 0.4; cursor: pointer; }
+.fr-slot.is-blocked:hover { border-color: var(--border); }
 .fr-slot-time { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; }
-.fr-slot-cap { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.fr-slot-cap { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 1.125em; }
+.fr-slot-cap:empty::before { content: '\00a0'; }
+.fr-slot-notice {
+  margin: 0 0 16px; padding: 10px 14px; background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 10px;
+  font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.45;
+}
 
 /* A slot the portal hasn't opened yet: real, dated, and schedulable, but
    not bookable now — dashed to say "not yet" without inventing a colour. */
@@ -586,7 +596,8 @@ body.flame-reskin-off #flame-reskin-toggle {
   }
   /* Rising from below, since that is now the edge it comes from. */
   .fr-banner { transform: translateY(10px); margin: 0 0 12px; }
-  .fr-book-layout { grid-template-columns: minmax(0, 1fr); }
+  .fr-book-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .fr-book-field:last-child { margin-bottom: 0; }
   .fr-datestrip { gap: 4px; }
   .fr-datestrip-cells { gap: 4px; }
   .fr-datestrip-cell { padding: 8px 0; }

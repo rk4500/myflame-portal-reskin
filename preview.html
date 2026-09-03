@@ -534,9 +534,17 @@
       const out = ['scheduled on: ' + dayLabel(), 'intents: ' + intents()];
       await nextDay();
       out.push('--- next day: ' + dayLabel() + ' ---');
+      out.push('note above grid: ' + (document.querySelector('.fr-rail-meta')?.textContent || 'NONE'));
       [...document.querySelectorAll('.fr-slot')].slice(0, 3).forEach((t, i) => {
-        out.push(`tile[${i}] ${t.disabled ? 'disabled' : 'enabled '} ${t.textContent.trim()}`);
+        out.push(`tile[${i}] blocked=${t.classList.contains('is-blocked')}`
+          + ` aria-disabled=${t.getAttribute('aria-disabled')}`
+          + ` text="${t.textContent.trim()}"`);
       });
+      // Tapping a greyed tile must explain itself rather than doing nothing.
+      document.querySelector('.fr-slot.is-blocked')?.click();
+      await wait(400);
+      out.push('notice title: ' + (document.querySelector('.fr-banner-title')?.textContent || 'NONE'));
+      out.push('notice note:  ' + (document.querySelector('.fr-banner-note')?.textContent || 'NONE'));
       const pre = document.createElement('pre');
       pre.id = 'measure';
       pre.textContent = out.join('\n');
