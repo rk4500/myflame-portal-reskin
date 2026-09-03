@@ -1902,6 +1902,9 @@
           submitBtn,
         ])
       );
+      requestAnimationFrame(() => {
+        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
     }
 
     // The autobook twin of openConfirm. Same panel, same fields, because it
@@ -1995,6 +1998,9 @@
           submitBtn,
         ])
       );
+      requestAnimationFrame(() => {
+        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
     }
 
     facilities.forEach((facility, idx) => {

@@ -808,5 +808,6 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   - *Known Limitation Note*: On certain devices/browsers, asterisk-wrapped text might not render visually bold if system font weights do not support standard 700 weight variants.
 - **In-Flight Turn Cancellation & Disabled "New chat"**:
   - The **New chat** header button is disabled (`opacity: 0.4`, `pointer-events: none`) while Gyan is initializing or generating a response (`gyanState.sending`), preventing broken thread states.
-  - Added `gyanState.activeTurnId` counter to abort and discard stale in-flight assistant turns cleanly if a thread reset is triggered.
+### 9. Smooth Scroll to Confirm Button (`main` branch)
+- **Automatic Viewport Centering**: Selecting any valid open or schedulable slot triggers `submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' })` so the confirm / autobook action button immediately scrolls smoothly into view.
 
