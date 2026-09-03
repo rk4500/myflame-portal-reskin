@@ -5,9 +5,21 @@
 # the pipeline documented in HANDOFF.md
 *.apk
 
-# Android patch toolchain: venv, downloaded build-tools/APKEditor, generated
-# hook.compiled.js, pulled/patched APKs, phone screenshots — all local/regenerable
-.patch-tools/
+# Android patch toolchain: venv, downloaded build-tools/APKEditor, pulled and
+# patched APKs, phone screenshots (which show a real name and roll number) —
+# about a gigabyte, all local and regenerable. The handful of real source
+# files in there are tracked by the exceptions below.
+.patch-tools/*
+!.patch-tools/hook.src.js
+!.patch-tools/gadget-config.json
+!.patch-tools/probe.js
+# hook.js and hook.compiled.js are deliberately NOT tracked: 90% of hook.js
+# is a pasted copy of portal-reskin.user.js, so every userscript edit would
+# show up a second time as a near-identical diff in the same commit.
+# `npm run build` regenerates it from hook.src.js.
+
+# npm's own tree; package-lock.json pins what matters
+node_modules/
 
 # QA screenshots from preview.html — regenerable, not source
 .review/
