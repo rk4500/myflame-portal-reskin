@@ -43,6 +43,87 @@ function sortResources(resources) {
   });
 }
 
+// The confirm panel is appended below the slot grid, usually past the fold,
+// and it is the last thing on the page — so selecting a slot scrolls the
+// whole page to the bottom, which is what the panel opening should feel
+// like. scrollIntoView could not do this: `block: 'end'` aligns the button
+// with the bottom of the scrollport, which on mobile is exactly where the
+// fixed nav bar sits, so the button landed underneath it. Going to the
+// bottom is safe because .fr-content's own bottom padding (96px + the nav
+// bar inset on mobile) is more than the bar's height, so the end of the
+// content parks above it rather than behind it — and confirmScrollDelta
+// verifies exactly that rather than trusting the arithmetic.
+const CONFIRM_SCROLL_GAP = 12;
+const CONFIRM_SCROLL_SETTLE_MS = 400;
+
+// How far the scroller has to move for `target` to sit fully inside the
+// part of it nothing is covering. Positive scrolls down. 0 means it is
+// already there, which is also the answer once a scroll has landed.
+function confirmScrollDelta(scroller, target) {
+  const nav = document.querySelector('.fr-nav');
+  // Only a fixed nav bar overlaps the scroller — the desktop bar is in
+  // normal flow above it and takes nothing away from the view.
+  const covered = nav && getComputedStyle(nav).position === 'fixed'
+    ? nav.getBoundingClientRect().height
+    : 0;
+  const view = scroller.getBoundingClientRect();
+  const box = target.getBoundingClientRect();
+  const topEdge = view.top + CONFIRM_SCROLL_GAP;
+  const bottomEdge = view.bottom - covered - CONFIRM_SCROLL_GAP;
+
+  let delta = 0;
+  if (box.bottom > bottomEdge) delta = box.bottom - bottomEdge;
+  else if (box.top < topEdge) delta = box.top - topEdge;
+  // A panel taller than the view can't fit whole; keep its top on screen
+  // rather than scrolling the header off to chase the bottom.
+  if (delta > 0 && box.top - delta < topEdge) delta = box.top - topEdge;
+  return Math.abs(delta) < 1 ? 0 : delta;
+}
+
+function scrollConfirmIntoView(target) {
+  const scroller = target.closest('.fr-content');
+  if (!scroller) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+    return;
+  }
+
+  const bottomOf = () => scroller.scrollHeight - scroller.clientHeight;
+
+  // Issued synchronously, and deliberately not from inside
+  // requestAnimationFrame: the panel is already in the document by the
+  // time this is called, and reading layout flushes it anyway, so there is
+  // nothing a frame would add — while rAF is not dependable here at all.
+  // It goes unserviced whenever this WebView decides it has nothing to
+  // paint (the same starvation that deadlocked the cold-launch cover; the
+  // harness reproduces it, and the scroll simply never ran).
+  scroller.scrollTo({ top: bottomOf(), behavior: 'smooth' });
+
+  // Smooth scrolling is a request, not a guarantee: Android WebView drops
+  // it some of the time (headless Chrome ignores it outright), and the
+  // grid above can still reflow after the panel opens, moving the bottom
+  // after the scroll was aimed at it — which together are why this landed
+  // short from some slot rows before. So look at where it actually ended
+  // up and finish the job without animation, unless the user has taken
+  // over, in which case their scroll wins and we leave it alone.
+  let taken = false;
+  const takeOver = () => { taken = true; };
+  const opts = { passive: true, once: true };
+  scroller.addEventListener('touchstart', takeOver, opts);
+  scroller.addEventListener('wheel', takeOver, opts);
+  setTimeout(() => {
+    scroller.removeEventListener('touchstart', takeOver);
+    scroller.removeEventListener('wheel', takeOver);
+    if (taken || !target.isConnected) return;
+    const bottom = bottomOf();
+    if (scroller.scrollTop < bottom - 1) scroller.scrollTop = bottom;
+    // The bottom is the intent; the button being visible is the
+    // requirement. If some future layout ever puts the two in conflict,
+    // this is what keeps the button reachable.
+    const left = confirmScrollDelta(scroller, target);
+    if (left) scroller.scrollTop += left;
+  }, CONFIRM_SCROLL_SETTLE_MS);
+}
+
 export async function renderBookSlot(token) {
   if (!bookState.facilities) {
     const raw = await callAura('CustomBookingController', 'getResources', null, true);
@@ -380,27 +461,6 @@ export async function renderBookSlot(token) {
         ])
       : null;
 
-  function scrollToConfirm(submitBtn, confirmWrap) {
-    const doScroll = () => {
-      const scrollParent = confirmWrap.closest('.fr-content') || confirmWrap.closest('.fr-page') || document.documentElement;
-      if (scrollParent) {
-        scrollParent.scrollTop = scrollParent.scrollHeight;
-        if (scrollParent.scrollTo) {
-          scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' });
-        }
-      }
-      window.scrollTo({ top: 999999, behavior: 'smooth' });
-      if (submitBtn && submitBtn.scrollIntoView) {
-        submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-      }
-    };
-
-    doScroll();
-    requestAnimationFrame(doScroll);
-    setTimeout(doScroll, 60);
-    setTimeout(doScroll, 200);
-  }
-
     confirmWrap.replaceChildren(
       el('div', { class: 'fr-confirm-panel' }, [
         header,
@@ -410,7 +470,7 @@ export async function renderBookSlot(token) {
         submitBtn,
       ])
     );
-    scrollToConfirm(submitBtn, confirmWrap);
+    scrollConfirmIntoView(submitBtn);
   }
 
   // The autobook twin of openConfirm. Same panel, same fields, because it
@@ -504,7 +564,7 @@ export async function renderBookSlot(token) {
         submitBtn,
       ])
     );
-    scrollToConfirm(submitBtn, confirmWrap);
+    scrollConfirmIntoView(submitBtn);
   }
 
   facilities.forEach((facility, idx) => {

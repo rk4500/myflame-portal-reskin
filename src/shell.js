@@ -268,6 +268,10 @@ export function buildPicker({ ariaLabel, onChange }) {
       item.addEventListener('click', () => {
         value = opt.value;
         btnLabel.textContent = opt.text;
+        // Repaint before closing: the highlight is painted from `value` at
+        // paint time, so without this the panel keeps showing the previous
+        // option as selected the next time it opens.
+        paintPanel();
         closePanel();
         if (onChange) onChange(value);
       });
@@ -281,6 +285,11 @@ export function buildPicker({ ariaLabel, onChange }) {
   function openPanel() {
     wrap.classList.add('is-open');
     btn.setAttribute('aria-expanded', 'true');
+    // The list scrolls past 280px, so with a long resource list the
+    // selected option can open off-screen. Put it in view without
+    // animating — the panel is appearing in the same frame anyway.
+    const selected = list.querySelector('.fr-picker-option.is-selected');
+    if (selected) list.scrollTop = Math.max(0, selected.offsetTop - (list.clientHeight - selected.offsetHeight) / 2);
     document.addEventListener('click', onDocClick, true);
   }
   function closePanel() {

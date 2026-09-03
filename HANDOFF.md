@@ -219,8 +219,17 @@ export PATH="$PWD/build-tools/android-14:$PWD/venv/bin:$PATH"
 # 1. hook.js must start with:  import Java from 'frida-java-bridge';
 #    (NOT `require(...)` — CJS require's interop breaks the bundle's default export)
 
-# 2. Bundle it — frida-compile and frida-java-bridge are npm-installed locally in .patch-tools/node_modules
-npx frida-compile hook.js -o hook.compiled.js -T none
+# 2. Bundle it. frida-compile and frida-java-bridge are REPO-ROOT deps, not
+#    .patch-tools ones — declared in the root package.json (`dependencies`)
+#    and installed at <repo>/node_modules. They have never lived in
+#    .patch-tools/node_modules despite what this line used to say; earlier
+#    sessions found them at /home/archer/node_modules instead (see the
+#    2026-09-01 night entry). Run from .patch-tools with an explicit path:
+#      ../node_modules/.bin/frida-compile hook.js -o hook.compiled.js -T none
+#    .patch-tools/venv/bin/frida-compile also exists (it ships with the
+#    python frida-tools) and is a separate program — the npm one is what
+#    this pipeline is built on.
+../node_modules/.bin/frida-compile hook.js -o hook.compiled.js -T none
 
 # 3. Patch the merged (all 4 splits combined via APKEditor) apk with the COMPILED script, not raw hook.js
 export JAVA_TOOL_OPTIONS="-Xmx6g"   # cosmetic only, see note below — real override is apktool's own -J passthrough if OOM ever actually recurs
@@ -808,6 +817,51 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   - *Known Limitation Note*: On certain devices/browsers, asterisk-wrapped text might not render visually bold if system font weights do not support standard 700 weight variants.
 - **In-Flight Turn Cancellation & Disabled "New chat"**:
   - The **New chat** header button is disabled (`opacity: 0.4`, `pointer-events: none`) while Gyan is initializing or generating a response (`gyanState.sending`), preventing broken thread states.
-### 9. Smooth Scroll to Confirm Button (`main` branch)
-- **Automatic Viewport Centering**: Selecting any valid open or schedulable slot triggers `submitBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' })` so the confirm / autobook action button immediately scrolls smoothly into view.
+### 9. Slot Selection Smooth Auto-Scroll
+- **Selection Auto-Scroll**: Tapping any valid open or schedulable slot brings the confirm / autobook button into view. Both the inconsistency noted here and the picker highlight in item 10 are resolved — see the entry below.
+
+### 10. Custom Picker Option Highlight Behavior (`.fr-picker`)
+- Selecting an option left the blue `.is-selected` highlight on the previously selected row. Resolved — see the entry below.
+
+## Confirm-button scroll and picker highlight, both fixed and both measured (2026-09-04, later)
+
+The two open notes above. Neither was as vague as "inconsistent" suggested; both had one specific cause, and both are now asserted by numbers in the harness rather than eyeballed.
+
+### The scroll: `scrollIntoView` was the wrong instrument, and `requestAnimationFrame` was the wrong clock
+
+Three separate faults, all in `scrollToConfirm`:
+
+1. **`block: 'end'` aligns with the bottom of the scrollport, which on mobile is exactly where the fixed nav bar sits.** The button was scrolled to precisely the place something covers. `block: 'center'` (the previous commit's answer) does clear the bar, but it also moves the grid much further than it needs to from most slot rows, and it still can't account for a bar whose height includes `--flame-navbar-inset`.
+2. **`scrollToConfirm` was declared inside `openConfirm`, and `openAutoConfirm` called it.** A function declaration is scoped to the function it is declared in, so the autobook panel had been throwing `scrollToConfirm is not defined` and scrolling nowhere at all. Confirmed against the HEAD build in the harness: `[errors] Script error.`, `scrollTop=0`.
+3. **`requestAnimationFrame` never fired.** The rewrite initially measured from two nested rAFs — the textbook way to wait for layout — and instrumentation showed the callback simply never ran: `log: ["called"]` and nothing after it. Same starvation as the cold-launch cover: this renderer services no frames when it decides it has nothing to paint. rAF is not a dependable clock in this app; the cold-launch entry above says so, and it applies here too.
+
+What ships instead (`scrollConfirmIntoView` + `confirmScrollDelta`, module scope in `src/tabs/book-slot.js`, called from both panels):
+
+- **Go to the bottom, not the minimum distance.** The first rewrite travelled exactly far enough to reveal the button, which passed every check and still felt wrong — the panel is the last thing on the page, so opening it should land at the end of the page. `scroller.scrollTo({ top: scrollHeight - clientHeight })`. This is safe against the nav bar because `.fr-content`'s bottom padding (96px + `--flame-navbar-inset` on mobile) is larger than the bar, so the end of the content parks ~47px above it rather than behind it.
+- **Verify rather than trust that.** `confirmScrollDelta` still exists and still runs: it reads the scroller's rect, subtracts the nav bar's height **only when its computed `position` is `fixed`** (the desktop bar is in flow and covers nothing), and returns the distance needed to put the button inside what's left, with a 12px gap. The bottom is the intent; the button being visible is the requirement, and if a future layout ever puts the two in conflict this is what keeps the button reachable.
+- **Issue it synchronously.** The panel is already in the document when this is called and reading layout flushes it anyway, so a frame adds nothing — and, per fault 3, may never arrive.
+- **Check the landing.** Smooth scrolling is a request: Android WebView drops it some of the time, headless Chrome ignores it outright, and the grid above can reflow after the panel opens, moving the bottom after the scroll was aimed at it. So 400ms later, anything short of the bottom is finished without animation — **unless a `touchstart` or `wheel` arrived first**, in which case the user has taken over and their scroll wins.
+
+### The picker: the highlight is painted from `value`, and the click handler never repainted
+
+`buildPicker`'s option click set `value` and the button label, then closed the panel. `paintPanel()` — the only thing that writes `.is-selected`/`aria-selected` — was called from `setOptions` and the `value` setter but not from the click path, so the panel kept the old row highlighted until something else repainted it. One `paintPanel()` call in the handler fixes it. `openPanel` now also scrolls the selected row into view, which matters for Class Rooms' 13 resources against the list's 280px `max-height`.
+
+### Harness
+
+Two new scenarios, both reporting PASS/FAIL with the numbers they judged on:
+
+- `?auto=confirm-scroll` and `?auto=confirm-scroll-auto` (manual and autobook panels) — nav height, view band, button band, and `scrollTop` against the scroller's maximum, so it reports both `at bottom` and whether the button is clear. PASS at 390x780, 360x640, 360x500 and 1280x900, with and without `?long=1`. The autobook variant is the one that catches fault 2.
+- `?auto=picker-reselect` — picks a different option, **reopens**, and asserts exactly one `.is-selected` and one `aria-selected`, on the option just picked. Reopening is the point; the stale highlight was only visible on a second open.
+
+Both need `?tab=book-slot`. Full sweep of all 39 scenarios at 390 and 1280 (each on its own tab): zero runtime errors.
+
+### Rebuilt and installed on the phone (2026-09-04, same session)
+
+Full pipeline, exactly as documented above: `npm run build` → `frida-compile` → `objection patchapk` → `adb install -r` over the existing install, session preserved. `lib/arm64-v8a/libfrida-gadget.script.so` inside the output APK matches `hook.compiled.js` byte for byte (628,445 after the scroll-to-bottom change; 627,938 on the first build of the day). Copied to `MyFLAME-reskin-working.apk` and pushed to `/sdcard/Download/MyFLAME-reskin.apk`. Confirmed working on the phone by the user.
+
+Logcat cleared *before* launching, which is what the previous entry said to do, so the injection line is finally in evidence: `hook installed` → `setWebViewClient` → `boot cover shown` → `onPageFinished /s/` → `injecting reskin` → `status bar overlay painted, height=134` → `navbar inset pushed: 48px device` → `boot cover removed (ready, 4650ms)`.
+
+**Working rule set here, and it applies to every future rebuild**: this depth of checking is for troubleshooting only. A minor change gets built, installed and handed over — no full scenario sweep, no `force-stop` and relaunch, no logcat grep, no confirmation screenshot. The pipeline is known-good and the phone is in the user's hand; re-proving injection on every rebuild answers a question nobody asked.
+
+**One thing to know about the dependencies**: `frida-compile` and `frida-java-bridge` are now declared in the root `package.json` under `dependencies` and committed. That install happened outside this session's commands, but it matches where the binaries actually resolve from (`<repo>/node_modules`) and makes the pipeline's requirements explicit instead of relying on a stray `npm install` somebody ran once, so it is kept.
 

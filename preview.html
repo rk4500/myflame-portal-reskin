@@ -380,6 +380,75 @@
       await wait(200);
       document.querySelector('.fr-picker-btn').click();
     }
+    if (auto === 'confirm-scroll' || auto === 'confirm-scroll-auto') {
+      // Selecting a slot has to leave the confirm panel's button on screen
+      // AND clear of the bottom nav bar, which is fixed over the scroller
+      // on mobile — run this at 390px wide, since the desktop bar is in
+      // normal flow and covers nothing. Numbers rather than a screenshot
+      // because "underneath the nav bar" and "just above it" look the same
+      // in a PNG once the button is near the fold.
+      await wait(500);
+      const wantLater = auto === 'confirm-scroll-auto';
+      const slot = await findDayWith(wantLater ? '.fr-slot--later' : '.fr-slot:not(:disabled):not(.fr-slot--later)');
+      slot?.click();
+      await wait(1000); // past the smooth scroll AND its settle check
+      const out = [];
+      const btn = document.querySelector('.fr-confirm-submit');
+      const scroller = document.querySelector('.fr-content');
+      if (!btn) {
+        out.push(`FAIL no confirm panel opened (slot found: ${!!slot})`);
+      } else {
+        const nav = document.querySelector('.fr-nav');
+        const covered = nav && getComputedStyle(nav).position === 'fixed'
+          ? nav.getBoundingClientRect().height
+          : 0;
+        const view = scroller.getBoundingClientRect();
+        const box = btn.getBoundingClientRect();
+        const bottom = view.bottom - covered;
+        out.push(`nav=${Math.round(covered)}px covered  view=${Math.round(view.top)}..${Math.round(bottom)}  btn=${Math.round(box.top)}..${Math.round(box.bottom)} "${btn.textContent}"`);
+        const max = Math.round(scroller.scrollHeight - scroller.clientHeight);
+        out.push(`scrollTop=${Math.round(scroller.scrollTop)} of ${max}${Math.abs(scroller.scrollTop - max) < 2 ? ' (at bottom)' : ' (SHORT of bottom)'}`);
+        out.push(box.top >= view.top && box.bottom <= bottom
+          ? 'PASS button fully visible, clear of the nav bar'
+          : `FAIL button ${box.bottom > bottom ? 'sits under the nav bar' : 'is above the view'}`);
+      }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'picker-reselect') {
+      // The picker paints its highlight from the value it holds, so the
+      // check is: pick something else, reopen, and see exactly one option
+      // marked — the one just picked. Reopening is the whole point; the
+      // stale highlight was only ever visible on the second open.
+      await wait(300);
+      document.querySelector('.fr-picker-btn').click();
+      await wait(150);
+      const opts = [...document.querySelectorAll('.fr-picker-option')];
+      const target = opts.find((o) => !o.classList.contains('is-selected'));
+      const out = [];
+      if (!target) {
+        out.push(`FAIL nothing to switch to (${opts.length} options)`);
+      } else {
+        const wanted = target.textContent;
+        target.click();
+        await wait(400);
+        document.querySelector('.fr-picker-btn').click();
+        await wait(150);
+        const marked = [...document.querySelectorAll('.fr-picker-option.is-selected')];
+        const aria = [...document.querySelectorAll('.fr-picker-option[aria-selected="true"]')];
+        out.push(`picked="${wanted}"  btn="${document.querySelector('.fr-picker-btn-label').textContent}"`);
+        out.push(`marked=${marked.length} [${marked.map((m) => m.textContent).join(' | ')}]  aria-selected=${aria.length}`);
+        out.push(marked.length === 1 && marked[0].textContent === wanted && aria.length === 1 && aria[0] === marked[0]
+          ? 'PASS highlight follows the selection'
+          : 'FAIL highlight did not follow the selection');
+      }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
     if (auto === 'week') {
       await wait(200);
       [...document.querySelectorAll('.fr-view-toggle button')].find((b) => b.textContent === 'Week').click();
