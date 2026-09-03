@@ -653,11 +653,6 @@ body.flame-reskin-off #flame-reskin-toggle {
      week mode to force this. */
   .fr-cal-gutter { position: sticky; left: 0; z-index: 1; background: var(--bg); }
   .fr-confirm-panel { grid-template-columns: 1fr; }
-  .fr-content:has(.fr-gyan-page) {
-    height: calc(100vh - 68px - var(--flame-navbar-inset));
-    padding-bottom: calc(16px + var(--flame-navbar-inset));
-  }
-  .fr-gyan-page { height: 100%; flex: 1; min-height: 0; }
 }
 
 /* A booking result is worth noticing, but not worth insisting on for
