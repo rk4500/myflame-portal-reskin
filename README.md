@@ -44,7 +44,16 @@ chromium --headless=new --window-size=390,844 \
   --screenshot=shot.png "file://$PWD/preview.html?tab=home"
 ```
 
-`?tab=<id>` picks the boot tab. `?auto=<scenario>` runs scripted clicks for states a screenshot can't reach on its own — slot selection, cancel confirmation, the Gyan error path. `?auto=measure` and `?auto=cancel-measure` dump every row and tile's computed height for `--dump-dom` to read, which is how layout questions get answered with numbers instead of by eye.
+`?tab=<id>` picks the boot tab. `?auto=<scenario>` runs scripted clicks for states a screenshot can't reach on its own — slot selection, cancel confirmation, the Gyan error path. Several scenarios answer layout questions with numbers instead of by eye, for `--dump-dom` to read:
+
+| | |
+|---|---|
+| `?auto=measure`, `?auto=cancel-measure` | every row and tile's computed height |
+| `?auto=wrapcheck` (+ `-week`, `-cancel`, `-confirm`, `-sched`) | any text wrapping or overflowing that isn't meant to |
+| `?auto=calfit` | calendar blocks' content height against their box height |
+| `?auto=sched-rule`, `?auto=sched-rule-cross` | one auto-booking per resource class per day, asserted |
+
+Pair `?auto=wrapcheck` with `?long=1`, which swaps every portal-supplied string for a much longer one — the layout is checked against the worst case, while screenshots stay on real data. `?seed=due` and `?seed=twin` plant auto-book intents so the runner fires on load.
 
 ## Rebuilding the APK
 

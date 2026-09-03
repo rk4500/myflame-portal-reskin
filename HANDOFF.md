@@ -392,13 +392,15 @@ Rebuilt: no `portal-reskin.user.js` changes this round (native-only fix), so no 
 
 ### Discussed, not started: scheduled slot auto-booker (2026-09-02)
 
+> **Superseded — see "Scheduled auto-booking, first version" (2026-09-03) at the end of this file.** None of the four native pieces below were needed: the user pointed out they open the app several times a day, which turns the whole problem from "wake the phone at T-24h" into "try again on the next launch". Kept here because the native path is still the only way to win a five-minute rush, so if the shipped version proves too slow, this is the design to come back to — including its two unverified risks.
+
 User asked what it'd actually take. Laid out 4 required native pieces, none built yet:
 1. Persist the booking intent (resource/date/slot) somewhere the native side can read — new UI + a native write, not built.
 2. `AlarmManager.setExactAndAllowWhileIdle` fired at T-24h, needs a `BroadcastReceiver`/`Service` registered in the manifest — a real manifest edit, beyond anything `.patch-tools/`'s pipeline does today (it only patches smali + injects the gadget, never touches the manifest's component declarations).
 3. Headless execution at fire time: spin up a background `WebView`, reuse the existing `resolveUserId()`/`callAura()` JS already in `portal-reskin.user.js` to get a fresh token off a live session, fire `createReservation`.
 4. Result surfacing via a notification, since nothing's on-screen when the alarm fires.
 
-**Recommended next step, not yet done**: before building any of this, manually test whether the Salesforce session survives 24h fully idle (leave the app signed in, untouched, try an aura call a day later) — if the session doesn't survive, nothing here can recover it (Google SSO can't be scripted headlessly) and the whole feature is dead on arrival. Second known risk, also unverified: HyperOS (this is a Xiaomi device) battery optimization commonly kills scheduled alarms unless the app is manually whitelisted, independent of `AlarmManager`'s official guarantees.
+**No longer blocking** (the shipped version never idles a day — it uses whatever session is live when you next open the app), but still required before any *native* version: manually test whether the Salesforce session survives 24h fully idle (leave the app signed in, untouched, try an aura call a day later) — if the session doesn't survive, nothing here can recover it (Google SSO can't be scripted headlessly) and the whole feature is dead on arrival. Second known risk, also unverified: HyperOS (this is a Xiaomi device) battery optimization commonly kills scheduled alarms unless the app is manually whitelisted, independent of `AlarmManager`'s official guarantees.
 
 ## Mobile layout pass: even boxes everywhere + cancel-confirm reorganized (2026-09-02, same day)
 
@@ -493,3 +495,91 @@ Two details that a plain `.sort()` gets wrong:
 - **Operating windows are compared as times.** `Gym ( 3:00 pm to 11:00 pm slot )` would otherwise sort before `Gym ( 6:00 am to 2:00 pm slot )` on the bare digit 3. `splitResourceWindow()` peels the parenthetical off and compares real minutes, so the morning gym lists first — which matters, since that is the one booked daily.
 
 Verified against the real captured resource lists for all three facilities, and in the harness DOM.
+
+## Home-screen widget: asked, analysed, dropped (2026-09-03)
+
+User asked how possible a widget showing the class schedule would be, then dropped it ("forget that"). The analysis is worth keeping, since the answer is counterintuitive.
+
+**The class timetable is semester-static**, so a widget showing classes needs no live data at all — which removes the hard part (background auth) entirely. Four paths, cheapest first:
+
+1. **Export to the phone's calendar (.ics).** Not a widget, and better than one. The events already carry everything iCalendar needs (`startDateTime`, `endDateTime`, `courseName`, `room`, `faculty`). Import once a semester and *every* calendar widget shows classes, plus notifications, plus offline, plus it outlives the session. Caveat: a WebView download inside the patched app needs a `DownloadListener` the stock app may not have, so generate it on the desktop userscript path or via a share intent.
+2. **Termux:Widget / KWGT** — a real widget, no patching; needs a cookie exported from a live session and re-exported when it expires, since Google SSO can't be scripted.
+3. **A separate companion app** — Kotlin, WebView login once, `CookieManager` holds the session, `CoroutineWorker` refreshes, `AppWidgetProvider` draws it. Reuses the call shapes in `aura_map.json`. The proper answer for a live widget, and it avoids the smali pipeline completely.
+4. **Patching a widget into MyFLAME itself** — manifest `<receiver>`, new layout and `appwidget-provider` resources (new resource IDs inside an already-compiled `resources.arsc` is the fiddly part), a provider in smali, plus a refresh service. Most work, least payoff over 3. Don't.
+
+## Scheduled auto-booking, first version (2026-09-03) — built, uncommitted
+
+The rules, from the user (not derivable from the HAR, which only ever captured one date):
+- **One booking per resource *class* per calendar day** — not per rolling 24h, and "class" is the resource without its operating-window suffix, so the 6 AM gym and the 3 PM gym are the same thing to the rule.
+- **A slot is only bookable once it is less than 24h away.**
+- Popular gym slots are gone within about five minutes of opening.
+
+### Why this needs no native work at all
+
+The earlier plan (see "Discussed, not built" above) was `AlarmManager` at T-24h waking a headless WebView — which needs a manifest edit the patch pipeline can't do, plus a session surviving a day idle. The user's own observation removed all of it: **the app gets opened several times a day, so an intent parked in `localStorage` and retried on every launch books anything uncontested with zero native code.** Works on desktop Tampermonkey too. The known limit, stated plainly rather than hidden: it will lose a five-minute rush unless the app happens to be open at the time. That is what this version is, not an oversight.
+
+### How it works
+
+- Intents live in `localStorage['flame-auto-book']`: resource, ISO date, slot start/end, state, last message.
+- `runAutoBook()` fires at boot (after the aura token lands) and on a loop while the app is open — every 2 min normally, tightening to 15s once an intent's opening moment is within 30 min, since that tight loop is the only way this version ever wins a contested slot.
+- Per intent: skip if not open yet; fail if the slot has already started; **pre-check `getReservations`** for an existing booking of the same class that day (turns a guaranteed refusal into a clear message); then `getResourceAvailability`, and only if the exact `startTime` has capacity, `createReservation`.
+- Refusals arrive as `state: SUCCESS` with a plain string, so the text is the only signal: `/booking id/i` means booked, anything else is a failure carrying the portal's own words.
+- No capacity yet? The intent **stays waiting** — someone may cancel, and there is still time on the clock.
+- `AUTOBOOK_EARLY_MARGIN_MS` (30 min) starts attempts slightly before the calculated opening. "Less than 24h away" is our *model* of the rule, not something the API states; being early costs two cheap calls that answer "not listed yet", being late costs the booking.
+
+### UI
+
+- Book Slot's grid now merges live availability with the resource's **own full day**, derived from its operating-window suffix (`Gym ( 6:00 am to 2:00 pm slot )` → hourly slots) or, for resources without one, from times remembered in `localStorage['flame-slot-times']` after any earlier availability fetch. A slot the portal won't list yet is real and dated, just not open — it renders dashed with `Opens in 6h 17m` and schedules on tap.
+- A "Booking automatically" list under the grid, with a Stop per intent.
+- Results land as a banner above whatever tab is open (`.fr-banner-host` lives outside `contentEl`, which every tab render replaces), carrying the portal's own message and a Dismiss. Silent auto-booking is how you end up with a reservation you didn't know about.
+
+### Harness
+
+`preview.html` now models the 24h window in its availability stub instead of returning every slot regardless of date, so the schedulable path is reachable locally. New `?auto=schedule` / `?auto=schedule-twice` scenarios click the not-yet-open tiles, and `?seed=due` plants an already-open intent so the runner actually fires on load and its banner can be screenshotted — the one part of this that is otherwise only observable by waiting a day. Verified end to end in the harness: seeded intent → availability check → `createReservation` → success banner.
+
+### Not verified against the real portal
+
+The 24h model, whether `createReservation` accepts the exact `startTime` string taken from availability (it is passed through verbatim, which is what the real booking flow already does), and whether "class" really is the cleaned resource name. First real use will settle all three.
+
+## Nothing wraps unless it is meant to; auto-booking is one slot per resource per day (2026-09-03, evening)
+
+Two asks, both from live use of the uncommitted auto-booking build.
+
+### Wrapping is now checked, not eyeballed
+
+The reskin had no way to answer "does anything wrap that shouldn't" other than looking at a PNG, which is how a long room name in the Calendar survived three sessions of review. `preview.html` now has **`?auto=wrapcheck`**, paired with **`?long=1`**:
+
+- `?long=1` replaces every string the portal supplies — course, room, faculty, resource, facility — with a much longer one. The layout is checked against the worst case; screenshots stay on real data.
+- `?auto=wrapcheck` walks every element in `#flame-reskin-root` that renders text directly, and counts the lines it actually occupies from the client rects of a `Range` over its own text nodes. That is what the renderer did, not what the CSS claims — the CSS being the thing under test. Variants `wrapcheck-week`, `wrapcheck-cancel`, `wrapcheck-confirm` and `wrapcheck-sched` run the same check with an interactive state open, since a confirm or schedule row is where new text lands in a box that was already full.
+- `WRAP_OK` inside that scenario is the registry of text that is *meant* to wrap: chat bubbles, empty states, the success/error panels, and the auto-book banner's note (the portal's own refusal string — a truncated reason is worse than a two-line banner). Add to it deliberately, with a reason; never to quiet a finding.
+- It reports the number of text runs scanned, so "0 unplanned" can be told apart from "the page never rendered".
+
+**The second half matters as much as the first**: `white-space: nowrap` converts a wrap into an overflow, so a clean wrap report alone proves nothing. The scenario also flags any element wider than its own box whose computed `overflow-x` is `visible` — `hidden`/`clip` is the ellipsis doing its job (an ellipsised line always measures wider than its box) and `auto`/`scroll` is a container that scrolls on purpose. That check is what caught the one genuine regression these fixes introduced, below.
+
+Also added **`?auto=calfit`**, which dumps content height against box height for every calendar block. A block's height *is* the class's duration and cannot grow, so that ratio is the only way to see whether the clip is cutting something a reader needed.
+
+### Fixes
+
+- **Calendar event venue no longer wraps.** It was the one line deliberately allowed to, on the theory that a long room name should grow the block rather than lose characters. It grows it into the block below: block height is duration, so an extra line is an overlap, and `Chandragupta - Focus Room 201 W` is a real room name. Venue and professor are one line each now, the course title keeps its two-line clamp, and `.fr-cal-event` itself takes `overflow: hidden` so nothing can escape into a neighbour. Full text moved to the block's own `title` attribute.
+  - The two-line title clamp is kept and registered as planned wrapping, because it measurably fits: `?auto=calfit` reports box 72px / content 72px for a 55-minute class at 360, 390 and 1280px. Every FLAME class is 55 minutes, so that is the real case, not a lucky one.
+- **Everything else that could wrap and shouldn't**, all one line + ellipsis: `.fr-cal-day-header`, `.fr-slot-cap`, `.fr-sched-name`/`.fr-sched-note`, `.fr-banner-title` (the summary — its note still wraps on purpose), `.fr-facility-item`, `.fr-book-field-label`, `.fr-book-results-title`, `.fr-confirm-panel-title`, `.fr-group-heading`, `.fr-datestrip-weekday`/`-daynum`, and `white-space: nowrap` on `.fr-btn` and `.fr-badge` — a button label that wraps is always a bug.
+- Home's class location (`.fr-row-meta`) already clipped correctly; it is now covered by the check rather than by assumption.
+- **The one real regression, caught by the overflow half**: `.fr-book-layout`'s `1fr` tracks. A grid track's default minimum is `min-content`, so a single unbreakable child — a facility name that no longer wraps — widened its column past the viewport and took the whole page sideways (531px of content in a 450px box at 360px wide). Both tracks are `minmax(0, 1fr)` now.
+
+Swept at 360×800, 390×844 and 1280×900 across all five tabs plus the four interactive states: 27 scenarios, zero findings. Row and tile heights are unchanged from the previous pass (70px rows, 68px date cells).
+
+### One auto-booking per resource class per calendar day
+
+The rule was already understood and was already enforced at fire time (`alreadyBookedThatDay`), but nothing stopped two intents being *scheduled* for the same gym on the same day — they simply produced one booking and one refusal later. Refusing at scheduling time is both clearer and cheaper.
+
+- `resourceClassKey(name)` is `cleanResourceName()` lowercased: the 6 AM gym and the 3 PM gym are two `resourceId`s and one class, so scheduling either closes the day for both.
+- `conflictingIntent(resourceName, isoDate)` finds the waiting intent already holding a class/day. `scheduleIntent` returns `null` when one exists.
+- **The slot grid says so rather than silently ignoring the tap**: once a class/day is claimed, every other later-tile for that class is disabled and captioned with the slot that holds it (`6 AM – 7 AM scheduled`), with the full reason on its `title`. The scheduled tile itself stays interactive — tapping it still cancels. Confirmed across resources: scheduling the 6 AM gym disables every tile under the 3 PM gym for that date too.
+- **`runAutoBook` keeps its own guard**, because `scheduleIntent` cannot help with intents already sitting in `localStorage` from before this rule, and because a booking made earlier in the same pass is not in `bookingsCache`'s snapshot. A `claimed` set is filled by both a successful `createReservation` and an `alreadyBookedThatDay` hit, and a later intent for a claimed class/day fails with the reason instead of being sent to the server.
+- Manual booking is untouched — the rule as asked covers auto-booking, and the portal refuses a manual duplicate itself, which the error panel already surfaces.
+
+Harness: `?auto=sched-rule` clicks three later slots for one resource and asserts one intent, one scheduled row, and seven disabled tiles naming the holder. `?auto=sched-rule-cross` does the same across the two gym resources. `?seed=twin` plants two same-class intents directly (the legacy-localStorage shape) and `?auto=seed-result` dumps what the runner did with them — one `done`, one `failed: Only one Gym booking a day`.
+
+**Harness bug fixed while doing this**: `?seed=due` hardcoded "1 PM today", so running the harness after 1 PM silently produced a "the slot started before it could be booked" failure instead of the success banner it is documented to screenshot. Both seeds now search the gym's own window across today and tomorrow for the first hour that is still ahead and less than 24h out, so they work at any clock time. `?auto=schedule`/`schedule-twice` likewise now step two days out — one day out is mostly inside the 24h window and has no schedulable tiles left to click.
+
+**Not verified against the real portal**, same as the rest of the auto-booking work. **Not committed, not rebuilt into the APK** — `portal-reskin.user.js` changed, so a new build needs `regen-hook-script.py` → `frida-compile` → `objection patchapk`.

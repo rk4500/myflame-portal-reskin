@@ -121,7 +121,19 @@
         { startTime: '12:00 PM', endTime: '1:00 PM', availableDate: null, availableCapacity: 5 },
         { startTime: '1:00 PM', endTime: '2:00 PM', availableDate: null, availableCapacity: 7 },
       ];
-      return JSON.stringify({ resourceId: params.resourceId, availabilitySlots: slots });
+      // The portal only lists a slot once it is less than 24h away; the
+      // stub models that too, so the "opens in Xh" / auto-book path is
+      // reachable here instead of only on the real site.
+      const open = slots.filter((sl) => {
+        const m = /^(\d{1,2}):(\d{2})\s*([AP])M$/i.exec(sl.startTime);
+        if (!m) return true;
+        const [y, mo, d] = params.bookingDate.split('-').map(Number);
+        const h = (Number(m[1]) % 12) + (m[3].toUpperCase() === 'P' ? 12 : 0);
+        const start = new Date(y, mo - 1, d, h, Number(m[2]));
+        const delta = start - Date.now();
+        return delta > 0 && delta < 24 * 60 * 60 * 1000;
+      });
+      return JSON.stringify({ resourceId: params.resourceId, availabilitySlots: open });
     },
     'CustomBookingController.createReservation': function (params) {
       // ?auto=book-confirm-fail exercises the real "accepted transport,
@@ -136,6 +148,96 @@
       return `Booking with ${params.bookingId} has been cancelled successfully.`;
     },
   };
+</script>
+<script>
+  // ?long=1 replaces every string the portal supplies (course, room,
+  // faculty, resource) with a much longer one, so a wrap check is run
+  // against the worst case rather than against the names that happen to
+  // be on this semester's timetable. Real data is what the screenshots
+  // use; this is what the layout has to survive.
+  if (new URLSearchParams(location.search).get('long') === '1') {
+    const P = window.__FLAME_RESKIN_PREVIEW__;
+    const LONG_COURSE = 'Business Plan Development and Entrepreneurial Finance for Emerging Markets';
+    const LONG_ROOM = 'Chandragupta Auditorium Basement Level 2 - Focus Room 201 West Wing';
+    const LONG_FACULTY = 'Venkataramanan Balasubramanian Krishnamurthy';
+    const LONG_RESOURCE = 'Chandragupta Auditorium Basement - Focus Room 201 West Wing ( 6:00 am to 2:00 pm slot )';
+    P['StudentPortalCalendarCtrl.getAllScheduledEvents'] =
+      P['StudentPortalCalendarCtrl.getAllScheduledEvents'].map((e) => ({
+        ...e, courseName: LONG_COURSE, room: LONG_ROOM, faculty: LONG_FACULTY, facultySalutation: 'Prof.',
+      }));
+    P['CustomBookingController.getReservations'] =
+      P['CustomBookingController.getReservations'].map((b) => ({ ...b, resourceName: LONG_RESOURCE }));
+    P['CustomBookingController.getResources'] = JSON.stringify(
+      JSON.parse(P['CustomBookingController.getResources']).map((f) => ({
+        facility_Name: f.facility_Name === 'Sports Facilities' ? f.facility_Name : `${f.facility_Name} and Seminar Halls (North Campus)`,
+        resources: f.resources.map((r) => ({
+          ...r,
+          name: /\(/.test(r.name) ? LONG_RESOURCE : 'Chandragupta Auditorium Basement - Focus Room 201 West Wing',
+        })),
+      }))
+    );
+  }
+</script>
+
+<script>
+  // Both seeds need a slot that is genuinely inside the portal's 24h
+  // release window *right now*, or the runner correctly refuses it for a
+  // reason that has nothing to do with what is being tested. Hardcoding
+  // "1 PM today" only worked while the harness was run before 1 PM;
+  // after that it silently became a "the slot already started" failure.
+  // Search the gym's own 6 AM-2 PM window across today and tomorrow for
+  // the first hour that is still ahead and less than 24h out.
+  function firstOpenGymSlot() {
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = Date.now();
+    for (const dayOffset of [0, 1]) {
+      for (let hour = 6; hour < 14; hour++) {
+        const d = new Date();
+        d.setDate(d.getDate() + dayOffset);
+        d.setHours(hour, 0, 0, 0);
+        const delta = d - now;
+        if (delta <= 0 || delta >= 24 * 60 * 60 * 1000) continue;
+        const h12 = ((hour + 11) % 12) + 1;
+        return {
+          date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+          startTime: `${h12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
+          endTime: `${((hour + 12) % 12) + 1}:00 ${hour + 1 < 12 ? 'AM' : 'PM'}`,
+        };
+      }
+    }
+    return null;
+  }
+
+  // ?seed=twin plants two already-open intents for the same resource class
+  // on the same day — the shape that scheduleIntent now refuses up front,
+  // but that can still be sitting in localStorage from before that rule
+  // existed. Exercises runAutoBook's own guard rather than the UI's.
+  const seed = new URLSearchParams(location.search).get('seed');
+  if (seed === 'twin') {
+    const slot = firstOpenGymSlot();
+    const base = { facilityName: 'Sports Facilities', ...slot, state: 'waiting', message: '', createdAt: Date.now() };
+    localStorage.setItem('flame-auto-book', JSON.stringify([
+      { ...base, id: 'twin1', resourceId: 'a230K00000945JHQAY', resourceName: 'Gym ( 6:00 am to 2:00 pm slot )' },
+      // Same class, different resourceId — one booking, one refusal.
+      { ...base, id: 'twin2', resourceId: 'a235i000000nYV0AAM', resourceName: 'Gym ( 3:00 pm to 11:00 pm slot )' },
+    ]));
+  } else if (seed === 'due') {
+    // An intent whose 24h window has already opened, so the runner fires on
+    // this load and its result banner can be screenshotted — the one part
+    // of scheduling that is otherwise only observable by waiting a day.
+    localStorage.setItem('flame-auto-book', JSON.stringify([{
+      id: 'seeded',
+      resourceId: 'a230K00000945JHQAY',
+      resourceName: 'Gym ( 6:00 am to 2:00 pm slot )',
+      facilityName: 'Sports Facilities',
+      ...firstOpenGymSlot(),
+      state: 'waiting',
+      message: '',
+      createdAt: Date.now(),
+    }]));
+  } else {
+    localStorage.removeItem('flame-auto-book');
+  }
 </script>
 <script src="portal-reskin.user.js"></script>
 <script>
@@ -207,6 +309,26 @@
       document.querySelectorAll('.fr-daynav-btn')[1].click();
       await wait(400);
     }
+    if (auto === 'schedule' || auto === 'schedule-twice') {
+      // Two days out, every slot is still outside the portal's 24h booking
+      // window, so the grid renders schedulable tiles rather than bookable
+      // ones — click one to exercise the auto-book intent path.
+      await wait(500);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(400);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(500);
+      document.querySelector('.fr-slot--later')?.click();
+      await wait(300);
+      if (auto === 'schedule-twice') {
+        // Since the one-per-resource-class-per-day rule landed this is a
+        // screenshot of that rule, not of two scheduled slots: the second
+        // tile is disabled and names the slot already holding the day.
+        // ?auto=sched-rule asserts the same thing with numbers.
+        document.querySelectorAll('.fr-slot--later')[2]?.click();
+        await wait(300);
+      }
+    }
     if (auto === 'gyan-chat') {
       // Exercises both the zero-hop and one-hop (transfer -> toolResponses
       // relay -> text) paths through the preview stub.
@@ -276,6 +398,189 @@
       const pre = document.createElement('pre');
       pre.id = 'measure';
       pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'sched-rule') {
+      // The one-per-resource-class-per-day rule, asserted rather than
+      // eyeballed: click three later slots for the same resource on the
+      // same day and dump what actually got scheduled, plus what the other
+      // tiles now say.
+      // Two days out, so the whole window is still outside the portal's
+      // 24h release and every tile is a schedulable "later" one. One day
+      // out, most of tomorrow is already inside the window and bookable.
+      await wait(500);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(400);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(500);
+      const tiles = () => [...document.querySelectorAll('.fr-slot--later')];
+      for (const i of [0, 1, 2]) {
+        tiles()[i]?.click();
+        await wait(300);
+      }
+      const out = [];
+      out.push(`intents waiting: ${JSON.parse(localStorage.getItem('flame-auto-book') || '[]').filter((i) => i.state === 'waiting').length}`);
+      out.push(`sched rows: ${document.querySelectorAll('.fr-sched-row').length}`);
+      for (const [i, t] of tiles().entries()) {
+        out.push(`tile[${i}] ${t.disabled ? 'disabled' : 'enabled '} ${t.textContent.trim()}`);
+      }
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'seed-result') {
+      // Dumps what the runner did with whatever ?seed planted, since a
+      // banner screenshot shows one result and there may be two.
+      await wait(1200);
+      const out = JSON.parse(localStorage.getItem('flame-auto-book') || '[]')
+        .map((i) => `${i.id} ${i.state}: ${i.message}`);
+      out.push(`banners: ${document.querySelectorAll('.fr-banner').length}`);
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'sched-rule-cross') {
+      // The half of the rule that is not obvious: the 6 AM gym and the
+      // 3 PM gym are two resourceIds and one resource class, so scheduling
+      // one has to close the day on the other.
+      await wait(500);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(400);
+      document.querySelectorAll('.fr-daynav-btn')[1].click();
+      await wait(500);
+      document.querySelector('.fr-slot--later')?.click();
+      await wait(400);
+      document.querySelector('.fr-picker-btn').click();
+      await wait(200);
+      const other = [...document.querySelectorAll('.fr-picker-option')].find((o) => /3:00 pm/i.test(o.textContent));
+      const out = [`switching to: ${other ? other.textContent.trim() : 'NOT FOUND'}`];
+      other?.click();
+      await wait(600);
+      out.push(`intents waiting: ${JSON.parse(localStorage.getItem('flame-auto-book') || '[]').filter((i) => i.state === 'waiting').length}`);
+      [...document.querySelectorAll('.fr-slot--later')].slice(0, 3).forEach((t, i) => {
+        out.push(`tile[${i}] ${t.disabled ? 'disabled' : 'enabled '} ${t.textContent.trim()}`);
+      });
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'calfit') {
+      // A calendar block's height is the class's duration, so it cannot
+      // grow: this dumps content height against box height for every
+      // block, which is the only way to see whether the clip is cutting
+      // anything a reader needed.
+      await wait(700);
+      const out = [];
+      document.querySelectorAll('.fr-cal-event').forEach((n, i) => {
+        out.push(`[${i}] box=${Math.round(n.getBoundingClientRect().height)}px content=${n.scrollHeight}px ${n.scrollHeight > n.clientHeight ? 'CLIPPED' : 'fits'}  ${n.textContent.trim().slice(0, 40)}`);
+      });
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto && auto.startsWith('wrapcheck')) {
+      // "Does anything wrap that shouldn't" answered with numbers, the
+      // same way ?auto=measure answers "are these boxes the same height".
+      // A text run's line count is read off the client rects of a Range
+      // over its own text nodes — what the renderer actually did, not what
+      // the CSS says it should have done, which is the thing under test.
+      // Pair it with ?long=1 so the check runs against pathological names
+      // rather than the ones this semester happens to have.
+      //
+      // WRAP_OK is the registry of text that is *meant* to wrap. Add to it
+      // deliberately, with a reason, never to quiet a finding.
+      const WRAP_OK = [
+        '.fr-gyan-bubble',      // chat messages: the text is the whole point
+        '.fr-empty-title', '.fr-empty-text',
+        '.fr-success-panel', '.fr-error-panel',
+        '.fr-banner-note',      // the portal's own refusal string, verbatim
+        '.fr-rail-meta',
+        // Two lines by design (-webkit-line-clamp: 2), and it fits: a
+        // 55-minute class block is 72px, and venue + two title lines +
+        // professor measure 72px exactly (?auto=calfit). The block clips,
+        // so a third line can never reach the block below it.
+        '.fr-cal-event-title',
+      ];
+      // Interactive states worth checking, since a confirm/schedule row is
+      // where new text gets added to a box that was already full.
+      if (auto === 'wrapcheck-week') {
+        await wait(300);
+        [...document.querySelectorAll('.fr-view-toggle button')].find((b) => b.textContent === 'Week').click();
+      }
+      if (auto === 'wrapcheck-cancel') {
+        await wait(400);
+        document.querySelector('.fr-cancel-wrap .fr-btn--ghost')?.click();
+      }
+      if (auto === 'wrapcheck-confirm') {
+        // Today's gym window has usually already passed by the time this
+        // runs, so step to tomorrow, where the stub's 24h model does list
+        // bookable slots, before opening the confirm panel.
+        await wait(500);
+        document.querySelectorAll('.fr-daynav-btn')[1].click();
+        await wait(500);
+        document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)')?.click();
+      }
+      if (auto === 'wrapcheck-sched') {
+        await wait(500);
+        document.querySelectorAll('.fr-daynav-btn')[1].click();
+        await wait(500);
+        document.querySelector('.fr-slot--later')?.click();
+      }
+      await wait(700);
+      const root = document.getElementById('flame-reskin-root');
+      const out = [];
+      const seen = new Set();
+      let scanned = 0;
+      for (const node of root.querySelectorAll('*')) {
+        // Only elements rendering text directly: a container's rects are
+        // its children's, and would double-report every finding.
+        const texts = [...node.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim());
+        if (!texts.length) continue;
+        scanned++;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const tops = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+        if (tops.size < 2) continue;
+        const cls = node.className && node.className.baseVal === undefined
+          ? `.${String(node.className).trim().split(/\s+/).join('.')}`
+          : node.tagName.toLowerCase();
+        const planned = WRAP_OK.some((sel) => node.matches(sel));
+        const line = `${planned ? 'ok  ' : 'WRAP'} ${tops.size} lines  ${cls}  ${node.textContent.trim().slice(0, 46)}`;
+        if (seen.has(line)) continue;
+        seen.add(line);
+        out.push(line);
+      }
+      // The other half of the assertion: white-space:nowrap turns a wrap
+      // into an overflow, so a clean wrap report on its own proves
+      // nothing. Anything wider than its own box is a finding unless the
+      // box scrolls on purpose (the week grid does, and says so in CSS).
+      for (const node of root.querySelectorAll('*')) {
+        if (node.scrollWidth <= node.clientWidth + 1) continue;
+        // Only overflow-x:visible actually spills. hidden/clip is the
+        // ellipsis doing its job (an ellipsised line always measures wider
+        // than its box), and auto/scroll is a container that scrolls on
+        // purpose — the week grid, and .fr-content itself.
+        if (getComputedStyle(node).overflowX !== 'visible') continue;
+        const cls = node.className && node.className.baseVal === undefined
+          ? `.${String(node.className).trim().split(/\s+/).join('.')}`
+          : node.tagName.toLowerCase();
+        out.push(`WRAP overflow ${node.scrollWidth}>${node.clientWidth}  ${cls}  ${node.textContent.trim().slice(0, 40)}`);
+      }
+      if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+        out.push(`WRAP page scrolls sideways: ${document.documentElement.scrollWidth} > ${window.innerWidth}`);
+      }
+
+      const bad = out.filter((l) => l.startsWith('WRAP'));
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      // scanned is reported so "0 unplanned" can be told apart from
+      // "the page never rendered and there was nothing to check".
+      pre.textContent = (bad.length ? bad.join('\n') : 'no unplanned wrapping') +
+        `\n-- ${bad.length} unplanned, ${out.length - bad.length} planned, ${scanned} text runs scanned`;
       document.body.appendChild(pre);
     }
     if (auto === 'cancel-confirm' || auto === 'cancel-measure') {
