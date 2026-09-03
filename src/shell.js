@@ -156,7 +156,7 @@ export function buildShell() {
 // A labelled on/off switch. Returns the row plus a `checked` getter, the
 // same minimal surface buildPicker exposes — callers only ever ask it one
 // question.
-export function buildSwitch({ label, hint, checked = false }) {
+export function buildSwitch({ label, hint, checked = false, onChange }) {
   const row = el('div', { class: 'fr-switch-row' });
   const text = el('div', {}, [el('div', { class: 'fr-switch-label', text: label })]);
   if (hint) text.appendChild(el('p', { class: 'fr-switch-hint', text: hint }));
@@ -171,6 +171,7 @@ export function buildSwitch({ label, hint, checked = false }) {
     on = !on;
     btn.setAttribute('aria-pressed', String(on));
     btn.setAttribute('aria-checked', String(on));
+    if (onChange) onChange(on);
   });
   row.append(text, btn);
   return { el: row, get checked() { return on; } };

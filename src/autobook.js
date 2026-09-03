@@ -133,14 +133,35 @@ export function conflictingIntent(resourceName, isoDate, list) {
   }) || null;
 }
 
+// Finds any future daily series for this resource class starting AFTER isoDate.
+export function futureDailyIntents(resourceName, isoDate, list) {
+  const key = resourceClassKey(resourceName);
+  return (list || loadIntents()).filter((i) => {
+    if (i.state !== 'waiting') return false;
+    if (resourceClassKey(i.resourceName) !== key) return false;
+    return i.repeat === 'daily' && i.date > isoDate;
+  });
+}
+
 // Returns the new intent, or null if the day is already claimed for this
 // resource class. Two intents for one class on one day can only ever
 // produce one booking and one refusal, so the second is refused here,
 // where it can still be explained, rather than at fire time.
 export function scheduleIntent({ resource, facilityName, date, startTime, endTime, purpose, coAttendee, repeat }) {
-  const list = loadIntents();
+  let list = loadIntents();
   const isoDate = isoDateLocal(date);
   if (conflictingIntent(resource.name, isoDate, list)) return null;
+
+  // A daily series starting today covers every day going forward. Any daily series
+  // set for a future date is now superseded and must be replaced to avoid clashes.
+  if (repeat === 'daily') {
+    const futures = futureDailyIntents(resource.name, isoDate, list);
+    if (futures.length > 0) {
+      const futureIds = new Set(futures.map((f) => f.id));
+      list = list.filter((i) => !futureIds.has(i.id));
+    }
+  }
+
   const intent = {
     id: `i${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
     resourceId: resource.resourceId,

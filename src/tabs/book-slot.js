@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------
 
 import { callAura, resolveUserId } from '../aura.js';
-import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate } from '../autobook.js';
+import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, futureDailyIntents, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate } from '../autobook.js';
 import { addDays, cleanResourceName, compactTimeRange, dayLabel, formatBookingWhen, isoDateLocal, sameDay, startOfToday } from '../dates.js';
 import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
@@ -349,7 +349,26 @@ export async function renderBookSlot(token) {
     const attendeeInput = needsDetails
       ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee (optional)' })
       : null;
-    const repeatSwitch = buildSwitch({ label: 'Repeat daily' });
+    const isoDate = isoDateLocal(bookState.date);
+    const futures = futureDailyIntents(resource.name, isoDate);
+    const clashWarn = el('p', { class: 'fr-confirm-warn' });
+    clashWarn.style.display = 'none';
+
+    function updateClashWarn() {
+      if (repeatSwitch.checked && futures.length > 0) {
+        const first = futures[0];
+        const parts = first.date.split('-').map(Number);
+        const firstDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        clashWarn.textContent = `Replaces your daily autobook starting ${dayLabel(firstDate)} (${compactTimeRange(first.startTime, first.endTime)}).`;
+        clashWarn.style.display = 'block';
+      } else {
+        clashWarn.style.display = 'none';
+      }
+    }
+
+    const repeatSwitch = buildSwitch({ label: 'Repeat daily', onChange: updateClashWarn });
+    updateClashWarn();
+
     const submitBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'button', text: 'Autobook' });
 
     // What scheduling actually promises, said plainly. It watches and
@@ -392,6 +411,7 @@ export async function renderBookSlot(token) {
       el('div', { class: 'fr-confirm-panel' }, [
         el('p', { class: 'fr-confirm-panel-title', text: `Autobook ${compactTimeRange(slot.startTime, slot.endTime)}` }),
         note,
+        clashWarn,
         ...(purposeInput ? [purposeInput] : []),
         ...(attendeeInput ? [attendeeInput] : []),
         repeatSwitch.el,

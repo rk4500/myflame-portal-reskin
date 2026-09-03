@@ -760,3 +760,9 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   - One-off: `'An autobook is already scheduled for this day. Stop it below to book this day yourself.'`
 - **Interactive Explanations on Tap**: Blocked tiles remain clickable (using `.is-blocked` and `aria-disabled="true"`) to trigger a self-dismissing banner notification (`showNotice`) on tap.
 
+### 2. Future Daily Series Clash Resolution & Auto-Replacement
+- **Clash Detection (`futureDailyIntents`)**: When setting up a new daily autobook for an earlier date (e.g. Sep 4), the system detects any existing daily series for the same resource starting on a future date (e.g. Sep 6).
+- **Confirmation Warning**: In `openAutoConfirm`, toggling **Repeat daily** dynamically displays a warning note when a future daily series exists:
+  > `Replaces your daily autobook starting Sun, Sep 6 (8:00 AM – 9:00 AM).`
+- **Automatic Replacement in `scheduleIntent`**: Confirming the new daily autobook automatically removes any future daily series for that resource class before saving the new intent. Because the earlier daily series runs indefinitely, all future dates remain covered without creating clashing or redundant intents.
+

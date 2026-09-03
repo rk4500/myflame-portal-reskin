@@ -644,14 +644,35 @@
     }) || null;
   }
 
+  // Finds any future daily series for this resource class starting AFTER isoDate.
+  function futureDailyIntents(resourceName, isoDate, list) {
+    const key = resourceClassKey(resourceName);
+    return (list || loadIntents()).filter((i) => {
+      if (i.state !== 'waiting') return false;
+      if (resourceClassKey(i.resourceName) !== key) return false;
+      return i.repeat === 'daily' && i.date > isoDate;
+    });
+  }
+
   // Returns the new intent, or null if the day is already claimed for this
   // resource class. Two intents for one class on one day can only ever
   // produce one booking and one refusal, so the second is refused here,
   // where it can still be explained, rather than at fire time.
   function scheduleIntent({ resource, facilityName, date, startTime, endTime, purpose, coAttendee, repeat }) {
-    const list = loadIntents();
+    let list = loadIntents();
     const isoDate = isoDateLocal(date);
     if (conflictingIntent(resource.name, isoDate, list)) return null;
+
+    // A daily series starting today covers every day going forward. Any daily series
+    // set for a future date is now superseded and must be replaced to avoid clashes.
+    if (repeat === 'daily') {
+      const futures = futureDailyIntents(resource.name, isoDate, list);
+      if (futures.length > 0) {
+        const futureIds = new Set(futures.map((f) => f.id));
+        list = list.filter((i) => !futureIds.has(i.id));
+      }
+    }
+
     const intent = {
       id: `i${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
       resourceId: resource.resourceId,
@@ -1326,7 +1347,7 @@
   // A labelled on/off switch. Returns the row plus a `checked` getter, the
   // same minimal surface buildPicker exposes — callers only ever ask it one
   // question.
-  function buildSwitch({ label, hint, checked = false }) {
+  function buildSwitch({ label, hint, checked = false, onChange }) {
     const row = el('div', { class: 'fr-switch-row' });
     const text = el('div', {}, [el('div', { class: 'fr-switch-label', text: label })]);
     if (hint) text.appendChild(el('p', { class: 'fr-switch-hint', text: hint }));
@@ -1341,6 +1362,7 @@
       on = !on;
       btn.setAttribute('aria-pressed', String(on));
       btn.setAttribute('aria-checked', String(on));
+      if (onChange) onChange(on);
     });
     row.append(text, btn);
     return { el: row, get checked() { return on; } };
@@ -1837,7 +1859,26 @@
       const attendeeInput = needsDetails
         ? el('input', { class: 'fr-input', type: 'text', placeholder: 'Co-attendee (optional)' })
         : null;
-      const repeatSwitch = buildSwitch({ label: 'Repeat daily' });
+      const isoDate = isoDateLocal(bookState.date);
+      const futures = futureDailyIntents(resource.name, isoDate);
+      const clashWarn = el('p', { class: 'fr-confirm-warn' });
+      clashWarn.style.display = 'none';
+
+      function updateClashWarn() {
+        if (repeatSwitch.checked && futures.length > 0) {
+          const first = futures[0];
+          const parts = first.date.split('-').map(Number);
+          const firstDate = new Date(parts[0], parts[1] - 1, parts[2]);
+          clashWarn.textContent = `Replaces your daily autobook starting ${dayLabel(firstDate)} (${compactTimeRange(first.startTime, first.endTime)}).`;
+          clashWarn.style.display = 'block';
+        } else {
+          clashWarn.style.display = 'none';
+        }
+      }
+
+      const repeatSwitch = buildSwitch({ label: 'Repeat daily', onChange: updateClashWarn });
+      updateClashWarn();
+
       const submitBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'button', text: 'Autobook' });
 
       // What scheduling actually promises, said plainly. It watches and
@@ -1880,6 +1921,7 @@
         el('div', { class: 'fr-confirm-panel' }, [
           el('p', { class: 'fr-confirm-panel-title', text: `Autobook ${compactTimeRange(slot.startTime, slot.endTime)}` }),
           note,
+          clashWarn,
           ...(purposeInput ? [purposeInput] : []),
           ...(attendeeInput ? [attendeeInput] : []),
           repeatSwitch.el,
