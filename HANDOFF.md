@@ -789,3 +789,9 @@ Refined the UX and visual layout for blocked/autobooked slots based on user feed
   - Tapping anywhere else on the screen (outside click listener) immediately cancels the prompt and restores the tile state.
   - Tapping the tile a second time while in `is-confirming-cancel` state confirms intent removal (`removeIntent`) and refreshes availability.
 
+### 6. Gyan Tab Loading & Welcome Text Updates (`gyan-updates` branch)
+- **Welcome Explanation Cleanup**: Cleaned `welcomeMessage` and `introductionText` fallbacks to sanitize stock Salesforce/Aura references to non-existent "Start chat" buttons, presenting clean welcome text ("Ask about classes, facility bookings, campus info, or anything else Gyan can help with.").
+- **Non-Blocking Tab Mount**: Removed full-page loading spinner on tab mount. `renderGyan` paints the UI layout synchronously, initiating background context initialization without hiding the page.
+- **Interactive Composer Textbox**: Composer `inputEl` remains **enabled and interactive at all times**, allowing users to type their queries immediately while context initializes or while an assistant turn is running.
+- **Send Button Loading Spinner**: `sendBtn` displays a greyed-out spinning loader icon (`.fr-spinner-svg`) while initializing or waiting for assistant responses, disabling submission until ready while leaving the input field free to edit.
+

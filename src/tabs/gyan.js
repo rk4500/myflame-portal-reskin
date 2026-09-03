@@ -1,21 +1,12 @@
-// ---------------------------------------------------------------------
-// 14. Gyan — the portal's own AI assistant, talked to via the same Aura
-//     RPC endpoint (namespace "vnai" instead of the usual ""). Real
-//     backend actions (menu/faculty lookups, bookings) run server-side —
-//     confirmed against a captured "book a gym slot via chat" session
-//     where the chat's own booking call hit the identical refusal path
-//     CustomBookingController.createReservation does. The client's job is
-//     only to relay each requiredAction's already-computed functionResponse
-//     back as a toolResponse until a real text reply comes back.
-// ---------------------------------------------------------------------
-
 import { callAura, getAssistantContext, resolveUserId } from '../aura.js';
 import { el } from '../dom.js';
+import { icon } from '../icons.js';
 import { renderEmpty, switchTab } from '../shell.js';
 import { ui } from '../state.js';
 
 const gyanState = {
   ready: false,
+  loadingReady: null,
   assistantId: null,
   userId: null,
   threadId: null,
@@ -30,23 +21,33 @@ const gyanState = {
 
 async function ensureGyanReady() {
   if (gyanState.ready) return;
-  const userId = await resolveUserId();
-  const ctx = await getAssistantContext();
-  gyanState.userId = userId;
-  gyanState.threadContext = ctx.threadContext;
-  gyanState.additionalKnowledgeFileIds = ctx.additionalKnowledgeFileIds || [];
+  if (gyanState.loadingReady) return gyanState.loadingReady;
 
-  const assistant = await callAura(
-    'AiAssistantWindowController', 'getAssistant',
-    { assistantName: 'Gyan', recordId: '' }, true, 'vnai'
-  );
-  gyanState.assistantId = assistant.assistantId;
-  gyanState.displayName = assistant.displayName || assistant.name || 'Gyan';
-  gyanState.welcomeMessage = assistant.welcomeMessage || '';
-  gyanState.introductionText = assistant.introductionText || '';
+  gyanState.loadingReady = (async () => {
+    try {
+      const userId = await resolveUserId();
+      const ctx = await getAssistantContext();
+      gyanState.userId = userId;
+      gyanState.threadContext = ctx.threadContext;
+      gyanState.additionalKnowledgeFileIds = ctx.additionalKnowledgeFileIds || [];
 
-  gyanState.threadId = await acquireGyanThread(userId);
-  gyanState.ready = true;
+      const assistant = await callAura(
+        'AiAssistantWindowController', 'getAssistant',
+        { assistantName: 'Gyan', recordId: '' }, true, 'vnai'
+      );
+      gyanState.assistantId = assistant.assistantId;
+      gyanState.displayName = assistant.displayName || assistant.name || 'Gyan';
+      gyanState.welcomeMessage = assistant.welcomeMessage || '';
+      gyanState.introductionText = assistant.introductionText || '';
+
+      gyanState.threadId = await acquireGyanThread(userId);
+      gyanState.ready = true;
+    } finally {
+      gyanState.loadingReady = null;
+    }
+  })();
+
+  return gyanState.loadingReady;
 }
 
 // Root cause, finally confirmed via a HAR of the real "Start chat" click:
@@ -95,16 +96,10 @@ function extractUserQuery(functionArgsJson) {
 async function runGyanTurn(message) {
   // The composer's submit handler calls runGyanTurn() directly on every
   // send — it only went through ensureGyanReady() once, on tab mount.
-  // (Originally caught a bug this way: something had nulled gyanState's
-  // threadId between sends and nothing repopulated it before the next
-  // runAssistant call went out.) ensureGyanReady() already no-ops once
-  // ready, so calling it on every turn is cheap and guards against that
-  // class of bug regardless of what clears the state in the future.
+  // ensureGyanReady() already no-ops once ready, so calling it on every turn
+  // is cheap and guards against state being cleared in the future.
   await ensureGyanReady();
 
-  // runModeration's rejection shape was never observed live (nothing got
-  // flagged in the captured session) — fail open rather than block the
-  // user's message on an unknown error shape.
   try {
     await callAura('AiAssistantWindowController', 'runModeration', { message }, false, 'vnai');
   } catch (e) {
@@ -150,8 +145,23 @@ async function runGyanTurn(message) {
   throw new Error('Gyan did not finish responding (too many tool steps)');
 }
 
-export async function renderGyan(token) {
-  await ensureGyanReady();
+function getCleanWelcomeTitle() {
+  let title = gyanState.welcomeMessage || '';
+  if (!title || /start chat/i.test(title)) {
+    title = 'Ask Gyan';
+  }
+  return title;
+}
+
+function getCleanWelcomeText() {
+  let intro = gyanState.introductionText || '';
+  if (!intro || /start chat/i.test(intro)) {
+    intro = 'Ask about classes, facility bookings, campus info, or anything else Gyan can help with.';
+  }
+  return intro;
+}
+
+export function renderGyan(token) {
   if (token !== ui.activeToken) return;
 
   const page = el('div', { class: 'fr-page fr-gyan-page' });
@@ -159,13 +169,6 @@ export async function renderGyan(token) {
   headerRow.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName, style: 'margin: 0;' }));
   const newChatBtn = el('button', { class: 'fr-link-btn', type: 'button', text: 'New chat' });
   newChatBtn.addEventListener('click', async () => {
-    // deleteThread + acquireGyanThread's createNewThread fallback is now
-    // a confirmed-real delete-and-recreate (see acquireGyanThread) — a
-    // HAR of the stock UI's "End chat" button showed deleteThread really
-    // deletes, and a HAR of "Start chat" showed createNewThread is the
-    // real (and only) way to get a new one back afterward. Earlier this
-    // called deleteThread with no working recreate path at all, which
-    // was genuinely dangerous; that's fixed now.
     newChatBtn.disabled = true;
     const oldThreadId = gyanState.threadId;
     gyanState.messages = [];
@@ -188,16 +191,27 @@ export async function renderGyan(token) {
   const inputEl = el('input', {
     class: 'fr-input', type: 'text', placeholder: `Ask ${gyanState.displayName}…`, autocomplete: 'off',
   });
-  const sendBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'submit', text: 'Send' });
+  const sendBtn = el('button', { class: 'fr-btn fr-btn--primary', type: 'submit' });
   composerForm.append(inputEl, sendBtn);
 
   function paintMessages() {
-    inputEl.disabled = gyanState.sending;
-    sendBtn.disabled = gyanState.sending;
+    // Textbox is always interactive (never disabled) so the user can type immediately
+    inputEl.disabled = false;
+
+    const isLoading = !gyanState.ready || gyanState.sending;
+    sendBtn.disabled = isLoading;
+    if (isLoading) {
+      sendBtn.classList.add('fr-btn--loading');
+      sendBtn.replaceChildren(icon('spinner'));
+    } else {
+      sendBtn.classList.remove('fr-btn--loading');
+      sendBtn.replaceChildren();
+      sendBtn.textContent = 'Send';
+    }
+
     if (!gyanState.messages.length && !gyanState.sending) {
       messagesEl.replaceChildren(
-        renderEmpty('sparkle', gyanState.welcomeMessage || 'Ask Gyan',
-          gyanState.introductionText || 'Ask about classes, bookings, campus info, or anything else Gyan can help with.')
+        renderEmpty('sparkle', getCleanWelcomeTitle(), getCleanWelcomeText())
       );
       return;
     }
@@ -223,24 +237,16 @@ export async function renderGyan(token) {
     inputEl.value = '';
     gyanState.messages.push({ role: 'user', text });
     gyanState.sending = true;
-    // State updates always happen regardless of which tab is showing —
-    // only the DOM paint is gated on still being the active view, so
-    // switching away mid-reply and back later shows the finished chat
-    // instead of getting stuck on "thinking" forever.
+
     if (token === ui.activeToken) paintMessages();
     try {
+      if (!gyanState.ready) {
+        await ensureGyanReady();
+      }
       const reply = await runGyanTurn(text);
       gyanState.messages.push({ role: 'assistant', text: reply });
     } catch (err) {
       gyanState.messages.push({ role: 'assistant', text: `Sorry, something went wrong: ${err.message}` });
-      // Soft reset only: re-validate on the next attempt (acquireGyanThread
-      // looks up the existing thread first and only creates a new one if
-      // that lookup genuinely comes back empty — so this never deletes
-      // anything, just stops trusting possibly-stale local state). No
-      // automatic deleteThread here — that's real and destructive now
-      // that createNewThread's recreate path is confirmed working, so it
-      // stays an explicit action (the "New chat" button) the user chooses,
-      // not something that fires silently on every transient error.
       gyanState.ready = false;
     } finally {
       gyanState.sending = false;
@@ -248,8 +254,27 @@ export async function renderGyan(token) {
     }
   });
 
+  inputEl.addEventListener('focus', () => {
+    setTimeout(() => {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }, 150);
+  });
+
   paintMessages();
   page.append(messagesEl, composerForm);
   ui.contentEl.replaceChildren(page);
-  inputEl.focus();
+
+  const isMobile = window.innerWidth <= 760 || 'ontouchstart' in window;
+  if (!isMobile) {
+    inputEl.focus();
+  }
+
+  if (!gyanState.ready) {
+    ensureGyanReady().then(() => {
+      if (token === ui.activeToken) paintMessages();
+    }).catch((err) => {
+      console.warn('[flame-reskin] ensureGyanReady background init failed', err);
+      if (token === ui.activeToken) paintMessages();
+    });
+  }
 }
