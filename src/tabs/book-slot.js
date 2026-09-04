@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------
 
 import { callAura, resolveUserId } from '../aura.js';
-import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, futureDailyIntents, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate } from '../autobook.js';
+import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, futureDailyIntents, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate, slotTimeKey } from '../autobook.js';
 import { addDays, cleanResourceName, compactTimeRange, dayLabel, formatBookingWhen, isoDateLocal, sameDay, startOfToday } from '../dates.js';
 import { clearPersistedBookings, readPersistedResources, sameData, writePersistedResources } from '../persist.js';
 import { el, skel } from '../dom.js';
@@ -234,7 +234,7 @@ export async function renderBookSlot(token) {
   // server — is left shimmering.
   function createSlotShell(sl) {
     const btn = el('button', { class: 'fr-slot fr-slot--skeleton', type: 'button', disabled: '' });
-    btn.dataset.start = sl.startTime;
+    btn.dataset.start = slotTimeKey(sl.startTime);
     btn.append(
       el('span', { class: 'fr-slot-time', text: compactTimeRange(sl.startTime, sl.endTime) }),
       el('span', { class: 'fr-slot-cap' }, [skel(7)])
@@ -371,7 +371,10 @@ export async function renderBookSlot(token) {
     // doesn't exist: bookings open 24h ahead, so the rest of the day is
     // real, just not open. Those are rendered too, as schedulable.
     const now = Date.now();
-    const bookable = new Map(slots.map((sl) => [sl.startTime, sl]));
+    // Keyed on the minute, not on the text: a derived "6:00 am" and the
+    // portal's "6:00 AM" are the same slot, and comparing the strings drew
+    // both of them.
+    const bookable = new Map(slots.map((sl) => [slotTimeKey(sl.startTime), sl]));
     const timeline = [];
     for (const sl of slots) {
       const start = slotStartDate(isoDate, sl.startTime);
@@ -380,7 +383,7 @@ export async function renderBookSlot(token) {
       timeline.push({ ...sl, kind: isOpenWindow ? 'open' : 'later', opensAt });
     }
     for (const known of knownSlotTimes(resource)) {
-      if (bookable.has(known.startTime)) continue;
+      if (bookable.has(slotTimeKey(known.startTime))) continue;
       const start = slotStartDate(isoDate, known.startTime);
       if (!start || start.getTime() <= now) continue; // already gone today
       timeline.push({ ...known, kind: 'later', opensAt: start.getTime() - BOOKING_WINDOW_MS });
@@ -413,8 +416,8 @@ export async function renderBookSlot(token) {
     if (grid) for (const node of grid.children) shells.set(node.dataset.start, node);
     const ordered = [];
     for (const sl of timeline) {
-      const slotBtn = shells.get(sl.startTime) || createSlotShell(sl);
-      shells.delete(sl.startTime);
+      const slotBtn = shells.get(slotTimeKey(sl.startTime)) || createSlotShell(sl);
+      shells.delete(slotTimeKey(sl.startTime));
       ordered.push(slotBtn);
       slotBtn.classList.remove('fr-slot--skeleton');
       slotBtn.classList.toggle('fr-slot--later', sl.kind === 'later');
@@ -432,7 +435,7 @@ export async function renderBookSlot(token) {
       // series reaching forward from an earlier day claims the day too,
       // but it is not this tile's intent and must not offer to cancel it.
       const scheduled = !!claimedBy && claimedBy.date === isoDate
-        && claimedBy.resourceId === resource.resourceId && claimedBy.startTime === sl.startTime;
+        && claimedBy.resourceId === resource.resourceId && slotTimeKey(claimedBy.startTime) === slotTimeKey(sl.startTime);
       const bySeries = !!claimedBy && claimedBy.date !== isoDate;
       // Two different answers for the two kinds. A second *autobook* on a
       // claimed day can never succeed, so it is refused outright. A manual
@@ -507,7 +510,7 @@ export async function renderBookSlot(token) {
           }
           if (scheduled) {
             const mine = loadIntents().find(
-              (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && i.startTime === sl.startTime
+              (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && slotTimeKey(i.startTime) === slotTimeKey(sl.startTime)
             );
             if (!mine) return;
 

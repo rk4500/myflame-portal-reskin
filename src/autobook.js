@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------
 
 import { auraState, callAura, resolveUserId } from './aura.js';
-import { addDays, cleanResourceName, compactTimeRange, formatTime, isoDateLocal, parseBookingDateTime, shortDayLabel } from './dates.js';
+import { addDays, cleanResourceName, compactTimeRange, isoDateLocal, parseBookingDateTime, shortDayLabel } from './dates.js';
 import { clearPersistedBookings } from './persist.js';
 import { el } from './dom.js';
 import { cache, ui } from './state.js';
@@ -54,6 +54,18 @@ export function parseClockMinutes(text) {
   return hour * 60 + Number(m[2] || 0);
 }
 
+// Slot times arrive as strings from two places that do not agree on
+// punctuation: the portal's own "6:00 AM", and times we format ourselves.
+// Locales differ on the dayPeriod's case ("am" on en-IN) and on the space
+// before it (ICU 72+ uses U+202F), so two strings for the same instant can
+// compare unequal on one phone and equal on another — which is how the
+// grid ended up drawing every derived slot a second time beside the real
+// one. Compare on the minute, never on the text.
+export function slotTimeKey(text) {
+  const mins = parseClockMinutes(text);
+  return mins === null ? `raw:${String(text).trim().toLowerCase()}` : String(mins);
+}
+
 export function slotStartDate(isoDate, startTime) {
   const [y, mo, d] = isoDate.split('-').map(Number);
   const minutes = parseClockMinutes(startTime);
@@ -82,9 +94,14 @@ function hoursFromResourceName(name) {
   return { start: toMinutes(m[1], m[2], m[3]), end: toMinutes(m[4], m[5], m[6]) };
 }
 
+// Built by hand rather than through toLocaleTimeString: these strings are
+// matched against the portal's own ("6:00 AM"), and a locale that writes
+// "6:00 am" or separates the dayPeriod with U+202F makes the same slot
+// look like two. Display is unaffected — this is the format the portal uses.
 function minutesToClock(mins) {
-  const d = new Date(2000, 0, 1, Math.floor(mins / 60), mins % 60);
-  return formatTime(d);
+  const hour = Math.floor(mins / 60);
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${String(mins % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
 export function rememberSlotTimes(resourceId, slots) {
@@ -510,7 +527,7 @@ export async function runAutoBook() {
         } catch (e) {
           slots = [];
         }
-        const match = slots.find((sl) => sl.startTime === intent.startTime);
+        const match = slots.find((sl) => slotTimeKey(sl.startTime) === slotTimeKey(intent.startTime));
         if (!match || match.availableCapacity <= 0) {
           // Stays waiting: capacity can come back when someone cancels,
           // and there is still time on the clock.

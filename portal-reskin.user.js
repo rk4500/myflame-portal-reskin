@@ -647,6 +647,18 @@
     return hour * 60 + Number(m[2] || 0);
   }
 
+  // Slot times arrive as strings from two places that do not agree on
+  // punctuation: the portal's own "6:00 AM", and times we format ourselves.
+  // Locales differ on the dayPeriod's case ("am" on en-IN) and on the space
+  // before it (ICU 72+ uses U+202F), so two strings for the same instant can
+  // compare unequal on one phone and equal on another — which is how the
+  // grid ended up drawing every derived slot a second time beside the real
+  // one. Compare on the minute, never on the text.
+  function slotTimeKey(text) {
+    const mins = parseClockMinutes(text);
+    return mins === null ? `raw:${String(text).trim().toLowerCase()}` : String(mins);
+  }
+
   function slotStartDate(isoDate, startTime) {
     const [y, mo, d] = isoDate.split('-').map(Number);
     const minutes = parseClockMinutes(startTime);
@@ -675,9 +687,14 @@
     return { start: toMinutes(m[1], m[2], m[3]), end: toMinutes(m[4], m[5], m[6]) };
   }
 
+  // Built by hand rather than through toLocaleTimeString: these strings are
+  // matched against the portal's own ("6:00 AM"), and a locale that writes
+  // "6:00 am" or separates the dayPeriod with U+202F makes the same slot
+  // look like two. Display is unaffected — this is the format the portal uses.
   function minutesToClock(mins) {
-    const d = new Date(2000, 0, 1, Math.floor(mins / 60), mins % 60);
-    return formatTime(d);
+    const hour = Math.floor(mins / 60);
+    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+    return `${hour12}:${String(mins % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
   }
 
   function rememberSlotTimes(resourceId, slots) {
@@ -1103,7 +1120,7 @@
           } catch (e) {
             slots = [];
           }
-          const match = slots.find((sl) => sl.startTime === intent.startTime);
+          const match = slots.find((sl) => slotTimeKey(sl.startTime) === slotTimeKey(intent.startTime));
           if (!match || match.availableCapacity <= 0) {
             // Stays waiting: capacity can come back when someone cancels,
             // and there is still time on the clock.
@@ -1870,7 +1887,7 @@
     // server — is left shimmering.
     function createSlotShell(sl) {
       const btn = el('button', { class: 'fr-slot fr-slot--skeleton', type: 'button', disabled: '' });
-      btn.dataset.start = sl.startTime;
+      btn.dataset.start = slotTimeKey(sl.startTime);
       btn.append(
         el('span', { class: 'fr-slot-time', text: compactTimeRange(sl.startTime, sl.endTime) }),
         el('span', { class: 'fr-slot-cap' }, [skel(7)])
@@ -2007,7 +2024,10 @@
       // doesn't exist: bookings open 24h ahead, so the rest of the day is
       // real, just not open. Those are rendered too, as schedulable.
       const now = Date.now();
-      const bookable = new Map(slots.map((sl) => [sl.startTime, sl]));
+      // Keyed on the minute, not on the text: a derived "6:00 am" and the
+      // portal's "6:00 AM" are the same slot, and comparing the strings drew
+      // both of them.
+      const bookable = new Map(slots.map((sl) => [slotTimeKey(sl.startTime), sl]));
       const timeline = [];
       for (const sl of slots) {
         const start = slotStartDate(isoDate, sl.startTime);
@@ -2016,7 +2036,7 @@
         timeline.push({ ...sl, kind: isOpenWindow ? 'open' : 'later', opensAt });
       }
       for (const known of knownSlotTimes(resource)) {
-        if (bookable.has(known.startTime)) continue;
+        if (bookable.has(slotTimeKey(known.startTime))) continue;
         const start = slotStartDate(isoDate, known.startTime);
         if (!start || start.getTime() <= now) continue; // already gone today
         timeline.push({ ...known, kind: 'later', opensAt: start.getTime() - BOOKING_WINDOW_MS });
@@ -2049,8 +2069,8 @@
       if (grid) for (const node of grid.children) shells.set(node.dataset.start, node);
       const ordered = [];
       for (const sl of timeline) {
-        const slotBtn = shells.get(sl.startTime) || createSlotShell(sl);
-        shells.delete(sl.startTime);
+        const slotBtn = shells.get(slotTimeKey(sl.startTime)) || createSlotShell(sl);
+        shells.delete(slotTimeKey(sl.startTime));
         ordered.push(slotBtn);
         slotBtn.classList.remove('fr-slot--skeleton');
         slotBtn.classList.toggle('fr-slot--later', sl.kind === 'later');
@@ -2068,7 +2088,7 @@
         // series reaching forward from an earlier day claims the day too,
         // but it is not this tile's intent and must not offer to cancel it.
         const scheduled = !!claimedBy && claimedBy.date === isoDate
-          && claimedBy.resourceId === resource.resourceId && claimedBy.startTime === sl.startTime;
+          && claimedBy.resourceId === resource.resourceId && slotTimeKey(claimedBy.startTime) === slotTimeKey(sl.startTime);
         const bySeries = !!claimedBy && claimedBy.date !== isoDate;
         // Two different answers for the two kinds. A second *autobook* on a
         // claimed day can never succeed, so it is refused outright. A manual
@@ -2143,7 +2163,7 @@
             }
             if (scheduled) {
               const mine = loadIntents().find(
-                (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && i.startTime === sl.startTime
+                (i) => i.state === 'waiting' && i.resourceId === resource.resourceId && i.date === isoDate && slotTimeKey(i.startTime) === slotTimeKey(sl.startTime)
               );
               if (!mine) return;
 
