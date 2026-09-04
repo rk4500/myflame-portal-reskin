@@ -1683,7 +1683,12 @@
   // operating window — "Gym ( 3:00 pm to 11:00 pm slot )" would sort before
   // "Gym ( 6:00 am to 2:00 pm slot )" on the bare digit 3 — so a window is
   // split off and compared as a real time, listing the morning gym first.
-  const RESOURCE_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  // Pinned to 'en' rather than the device's locale: this order is not
+  // presentation. firstLiveResource() takes the default selection from it,
+  // so `undefined` would let the phone's language decide which resource is
+  // preselected — the same "the environment decides behaviour" mistake that
+  // drew every slot twice. The names are English either way.
+  const RESOURCE_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
   const RESOURCE_WINDOW_RE = /^(.*?)\s*\(\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b/i;
 
   function splitResourceWindow(name) {
