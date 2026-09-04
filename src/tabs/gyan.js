@@ -50,6 +50,15 @@ async function ensureGyanReady() {
   return gyanState.loadingReady;
 }
 
+// Busy means "a request this tab owns is actually in flight" — an init
+// that already finished and *failed* is not busy, it is a retry waiting to
+// happen. Keying the disabled state off gyanState.ready instead was what
+// left the tab permanently dead after one failed turn: ready stayed false,
+// so Send and New chat were both disabled and nothing ever re-ran init.
+function gyanBusy() {
+  return gyanState.sending || !!gyanState.loadingReady;
+}
+
 // Root cause, finally confirmed via a HAR of the real "Start chat" click:
 // getUserThread's createIfNotExists flag is misleading — it never
 // actually creates anything, only looks up a thread that already
@@ -213,7 +222,7 @@ export function renderGyan(token) {
   headerRow.appendChild(el('h1', { class: 'fr-page-title', text: gyanState.displayName, style: 'margin: 0;' }));
   const newChatBtn = el('button', { class: 'fr-link-btn', type: 'button', text: 'New chat' });
   newChatBtn.addEventListener('click', async () => {
-    if (gyanState.sending || !gyanState.ready) return;
+    if (gyanBusy()) return;
     newChatBtn.disabled = true;
     gyanState.activeTurnId = (gyanState.activeTurnId || 0) + 1;
     const oldThreadId = gyanState.threadId;
@@ -245,7 +254,7 @@ export function renderGyan(token) {
     // Textbox is always interactive (never disabled) so the user can type immediately
     inputEl.disabled = false;
 
-    const isLoading = !gyanState.ready || gyanState.sending;
+    const isLoading = gyanBusy();
     sendBtn.disabled = isLoading;
     newChatBtn.disabled = isLoading;
     newChatBtn.style.opacity = isLoading ? '0.4' : '1';
@@ -269,8 +278,13 @@ export function renderGyan(token) {
 
       for (const c of getSmartGyanChips()) {
         const btn = el('button', { class: 'fr-gyan-chip', type: 'button' });
+        // A chip submits by dispatching the form event, which does not care
+        // that sendBtn is disabled — so the chip has to carry the same
+        // disabled state itself, or it fires a turn the composer is refusing.
+        btn.disabled = isLoading;
         btn.append(icon(c.icon), document.createTextNode(c.label));
         btn.addEventListener('click', () => {
+          if (gyanBusy()) return;
           inputEl.value = c.text;
           composerForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
         });
@@ -334,15 +348,9 @@ export function renderGyan(token) {
     }, 150);
   });
 
-  paintMessages();
-  page.append(messagesEl, composerForm);
-  ui.contentEl.replaceChildren(page);
-
-  const isMobile = window.innerWidth <= 760 || 'ontouchstart' in window;
-  if (!isMobile) {
-    inputEl.focus();
-  }
-
+  // Kicked off *before* the first paint: ensureGyanReady sets loadingReady
+  // synchronously, so paintMessages already sees the busy state and the very
+  // first frame carries the spinner instead of an enabled Send for one tick.
   if (!gyanState.ready) {
     ensureGyanReady().then(() => {
       if (token === ui.activeToken) paintMessages();
@@ -350,5 +358,14 @@ export function renderGyan(token) {
       console.warn('[flame-reskin] ensureGyanReady background init failed', err);
       if (token === ui.activeToken) paintMessages();
     });
+  }
+
+  paintMessages();
+  page.append(messagesEl, composerForm);
+  ui.contentEl.replaceChildren(page);
+
+  const isMobile = window.innerWidth <= 760 || 'ontouchstart' in window;
+  if (!isMobile) {
+    inputEl.focus();
   }
 }

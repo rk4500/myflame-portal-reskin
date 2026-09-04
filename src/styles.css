@@ -638,10 +638,13 @@
   transition: all 150ms ease; user-select: none;
 }
 .fr-gyan-chip .icon { width: 14px; height: 14px; color: var(--accent); }
-.fr-gyan-chip:hover, .fr-gyan-chip:active {
+.fr-gyan-chip:hover:not(:disabled), .fr-gyan-chip:active:not(:disabled) {
   background: var(--bg-elevated-2); border-color: var(--accent); color: var(--text);
   transform: translateY(-1px);
 }
+/* Dimmed while Gyan is still initialising — the chips submit through the
+   composer, so they follow the send button's disabled state exactly. */
+.fr-gyan-chip:disabled { opacity: 0.45; cursor: default; transform: none; }
 .fr-gyan-msg { display: flex; }
 .fr-gyan-msg--user { justify-content: flex-end; }
 .fr-gyan-msg--assistant { justify-content: flex-start; }
