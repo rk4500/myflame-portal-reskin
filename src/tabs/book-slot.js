@@ -225,7 +225,17 @@ export async function renderBookSlot(token) {
     // never needed. When the resource's slot times can't be predicted at
     // all, there is nothing truthful to draw and the spinner is still the
     // honest answer.
-    const expected = resource ? knownSlotTimes(resource) : [];
+    // A slot whose start is already behind us cannot be booked, and the
+    // portal does not list it, so predicting it means drawing cards that
+    // vanish the moment the answer lands — half the grid disappearing on
+    // an afternoon open. Same predicate the known-slot fill below uses.
+    const nowMs = Date.now();
+    const expected = resource
+      ? knownSlotTimes(resource).filter((sl) => {
+          const start = slotStartDate(isoDate, sl.startTime);
+          return !start || start.getTime() > nowMs;
+        })
+      : [];
     let grid = null;
     if (expected.length) {
       grid = el('div', { class: 'fr-slot-grid', 'aria-busy': 'true' });

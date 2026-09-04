@@ -865,6 +865,10 @@ Logcat cleared *before* launching, which is what the previous entry said to do, 
 
 **One thing to know about the dependencies**: `frida-compile` and `frida-java-bridge` are now declared in the root `package.json` under `dependencies` and committed. That install happened outside this session's commands, but it matches where the binaries actually resolve from (`<repo>/node_modules`) and makes the pipeline's requirements explicit instead of relying on a stray `npm install` somebody ran once, so it is kept.
 
+### Pushed and released as `v2026.09.04.1`
+
+`master` was pushed and the APK attached to a GitHub release: https://github.com/rk4500/myflame-portal-reskin/releases/tag/v2026.09.04.1, built from `d4a18ca` (the scroll + picker commit). The earlier `v2026.09.04` from the same day is one build behind it, from `1ee6fc8` (the autobook confirm panel work). `v2026.09.04.1` is the newest release and the build currently on the phone's `/sdcard/Download/MyFLAME-reskin.apk`.
+
 ## Skeletons on Home and Book Slot, and a repaint that stopped happening (2026-09-04, branch `skeleton-loaders`)
 
 ### The rule the skeletons follow
@@ -886,6 +890,7 @@ The whole tab used to wait on `getResources` before painting a single pixel, and
 - **The resource list is cached on its own clock.** `flame-resources-cache`, 7-day TTL, separate from Home's blob because the two expire for different reasons: a day-old class list is nearly right, and a week-old resource list is simply correct — the gym and the classrooms do not change during a semester. Cached list paints immediately, the request still goes out, and only an answer that differs touches the UI (a plain repaint, since a renamed resource changes the rail and the picker together).
 - **The slot grid's times are not a guess.** `knownSlotTimes(resource)` already derived them from the resource's own operating window — `Gym ( 6:00 am to 2:00 pm slot )` is eight hourly slots — falling back to whatever that resource last offered. So the grid is drawn with real labels in the real number of cards, and only the capacity line, the one thing that genuinely needs the server, shimmers.
 - **The cards are filled, not rebuilt.** `createSlotShell` builds the box; when the answer lands those same nodes are looked up by `dataset.start` and mutated in place. Nothing about the grid moves. A card is only created late when the skeleton could not predict it, and anything predicted that the day did not have is dropped.
+- **Past times are not predicted.** On today, a slot that has already started cannot be booked and the portal does not list it, so a skeleton built from the full operating window drew cards that vanished when the answer landed — open the tab in the afternoon and half the grid disappeared. The predicted list is filtered by the same `start > now` predicate the known-slot fill already used, so the skeleton grid is the size the real grid will be. Late enough in the day that nothing is left, there is nothing truthful to draw and it falls back to the spinner, then to "No open slots".
 - **The claim note and the scheduled-autobook list are in the first paint too.** Both come from intents in `localStorage`, not from a request, so holding them back only meant pushing the grid down a line at the worst moment.
 - The spinner is still the honest answer in the one case where nothing can be predicted: a resource with no operating window in its name and nothing remembered.
 
@@ -895,6 +900,6 @@ Resource/day switches inside the tab get the **same skeleton every time** (not a
 
 ### Verification
 
-Screenshots at 390x780 and 1280x900, loading against settled, on both tabs: rows and cards land in identical positions. One defect found and fixed in that pass — skeleton cards inherited `.fr-slot:disabled { opacity: 0.4 }`, which is the *blocked* look and also dimmed the card's time, the one thing already true. Targeted scenarios on the touched paths (`book-confirm`, `resource-picker-open`, `confirm-scroll`, `picker-reselect`, `autopanel`, `measure`): no errors. Impeccable's mechanical detector over the changed files: clean.
+Screenshots at 390x780 and 1280x900, loading against settled, on both tabs: rows and cards land in identical positions. Both start paths were checked, not only the empty one — cold (no cache, everything shimmers) and **warm** (cache present, which is what a real launch hits and where a mismatch between the predicted grid and the real one would show). One defect found and fixed in that pass — skeleton cards inherited `.fr-slot:disabled { opacity: 0.4 }`, which is the *blocked* look and also dimmed the card's time, the one thing already true. Targeted scenarios on the touched paths (`book-confirm`, `resource-picker-open`, `confirm-scroll`, `picker-reselect`, `autopanel`, `measure`): no errors. Impeccable's mechanical detector over the changed files: clean.
 
-Built and installed on the phone. Not merged to `master` — the branch is `skeleton-loaders`.
+Built and installed on the phone. **Not merged and not pushed** — `skeleton-loaders` is local-only, has no upstream, and nothing here is in a release; `master` still ends at `d4a18ca` / `v2026.09.04.1`. Merging and cutting a release is the next step whenever the user says so.
