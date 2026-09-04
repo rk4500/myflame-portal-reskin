@@ -9,9 +9,10 @@
 
 import { callAura, resolveUserId } from '../aura.js';
 import { addDays, cleanResourceName, dayLabel, formatBookingWhen, formatTime, parseBookingDateTime, sameDay, startOfToday, startOfWeekMonday } from '../dates.js';
-import { el, skel } from '../dom.js';
+import { el, morphHeight, skel } from '../dom.js';
 import { readPersisted, sameData, writePersisted } from '../persist.js';
 import { buildDateStrip, renderEmpty, switchTab } from '../shell.js';
+import { icon } from '../icons.js';
 import { cache, ui } from '../state.js';
 
 const homeState = { weekStart: startOfWeekMonday(startOfToday()), selected: startOfToday() };
@@ -63,7 +64,18 @@ export async function renderHome(token) {
   // homeState is deliberately not reset here: if a day was tapped on the
   // strip while the fetch was in flight, the repaint keeps that choice
   // rather than yanking the view back to today under the finger.
+  //
+  // The bookings section is the one part of this page whose height the
+  // skeleton cannot always predict: it stands one booking tall, which is
+  // what most days hold and exactly what "nothing booked" now occupies,
+  // but a three-booking day resolves taller. Measure what it occupied
+  // before the swap and let it grow into the new height instead of
+  // snapping the rest of the page down.
+  const wasTall = ui.contentEl.querySelector('.fr-home-bookings');
+  const priorHeight = wasTall ? wasTall.offsetHeight : 0;
   ui.contentEl.replaceChildren(buildHomePage(events, bookings));
+  const nowTall = ui.contentEl.querySelector('.fr-home-bookings');
+  if (nowTall) morphHeight(nowTall, priorHeight);
 }
 
 // The loading state is the real page with the unknown parts shimmering:
@@ -101,7 +113,7 @@ function buildHomeSkeleton() {
   }
   page.appendChild(classes);
 
-  const bookings = el('div', { style: 'margin-top: 32px;' });
+  const bookings = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
   bookings.appendChild(
     el('div', { class: 'fr-group-heading-row' }, [
       el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }),
@@ -197,7 +209,7 @@ function buildHomePage(events, bookings) {
   // dropped entirely when empty, which left the page looking like it had
   // ended early — and an empty booking list is the one moment where the
   // obvious next move is to make a booking, so it says that and offers it.
-  const bookingsSection = el('div', { style: 'margin-top: 32px;' });
+  const bookingsSection = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
   const headingRow = el('div', { class: 'fr-group-heading-row' });
   headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }));
   if (upcomingBookings.length) {
@@ -220,11 +232,23 @@ function buildHomePage(events, bookings) {
     }
     bookingsSection.appendChild(list);
   } else {
+    // Deliberately not renderEmpty: that one is sized for a whole empty
+    // tab and stood three rows tall here, so a day with no bookings
+    // dropped the page ~130px below where the skeleton had put it. This
+    // is one row exactly — same box as a booking, same two lines — drawn
+    // as a hairline outline rather than a filled card so it still cannot
+    // be misread as something that was actually booked.
+    const book = el('button', { class: 'fr-link-btn', type: 'button', text: 'Book a slot' });
+    book.addEventListener('click', () => switchTab('book-slot'));
     bookingsSection.appendChild(
-      renderEmpty('book', 'Nothing booked', 'The gym, study rooms and courts are all bookable a day ahead.', 'fr-empty--inline', {
-        label: 'Book a slot',
-        onClick: () => switchTab('book-slot'),
-      })
+      el('div', { class: 'fr-nothing' }, [
+        icon('book', 'fr-nothing-icon'),
+        el('div', { class: 'fr-row-main' }, [
+          el('p', { class: 'fr-row-title', text: 'Nothing booked' }),
+          el('p', { class: 'fr-row-meta', text: 'Bookings open a day ahead.' }),
+        ]),
+        book,
+      ])
     );
   }
   page.appendChild(bookingsSection);

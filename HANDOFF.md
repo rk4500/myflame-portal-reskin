@@ -903,3 +903,29 @@ Resource/day switches inside the tab get the **same skeleton every time** (not a
 Screenshots at 390x780 and 1280x900, loading against settled, on both tabs: rows and cards land in identical positions. Both start paths were checked, not only the empty one — cold (no cache, everything shimmers) and **warm** (cache present, which is what a real launch hits and where a mismatch between the predicted grid and the real one would show). One defect found and fixed in that pass — skeleton cards inherited `.fr-slot:disabled { opacity: 0.4 }`, which is the *blocked* look and also dimmed the card's time, the one thing already true. Targeted scenarios on the touched paths (`book-confirm`, `resource-picker-open`, `confirm-scroll`, `picker-reselect`, `autopanel`, `measure`): no errors. Impeccable's mechanical detector over the changed files: clean.
 
 Built and installed on the phone. **Not merged and not pushed** — `skeleton-loaders` is local-only, has no upstream, and nothing here is in a release; `master` still ends at `d4a18ca` / `v2026.09.04.1`. Merging and cutting a release is the next step whenever the user says so.
+
+## The bookings section stopped jumping (2026-09-04, same branch)
+
+Two shapes were wrong, and only one of them was fixable with motion.
+
+### "Nothing booked" was a page-sized empty state in a list slot
+
+`renderEmpty` is built for a whole empty tab: 64px of padding, a 32px icon, three stacked lines and a button. Dropped into Home's bookings section it stood three rows tall, so the skeleton — which stands **one** booking tall, because that is what most days hold — resolved into something ~130px taller and shoved the page down at the worst moment.
+
+`.fr-nothing` replaces it there. It occupies exactly one `.fr-row`: the same 14px of vertical space once its 1px border is counted, and the same two line boxes, because it reuses `.fr-row-title` and `.fr-row-meta` rather than approximating them. It must not be mistaken for a booking, though, so it inverts the row's material — hairline dashed, no fill, secondary title — and carries the offer on the right as a `Book a slot` link. The skeleton row, a real booking row and "nothing booked" now land in the same band (496–554 at 390x844, measured off the screenshots).
+
+Copy is `Nothing booked` / `Bookings open a day ahead.` The first draft named the facilities and ellipsized on mobile, which is what `.fr-row-meta`'s single-line rule does to anything too long for the space left beside the button.
+
+### Motion, where geometry cannot do the job
+
+Everything above removes the jump rather than smoothing it, which is the right order: a 130px shift cannot be animated into something pleasant. What is left is the case the skeleton genuinely cannot predict — it stands one booking tall and the day has three — so `morphHeight` (`src/dom.js`) animates the section from the height it occupied to the height it now needs, 280ms.
+
+**No `requestAnimationFrame` in it.** This WebView services no frames when it decides it has nothing to paint, which is the same fault that broke the confirm-button scroll and the cold-launch cover, so the second height is written synchronously after an `offsetHeight` read flushes layout. `transitionend` is the fast path for cleaning up the inline height; a timer does it regardless, so a dropped transition leaves a correctly sized element instead of one frozen at a stale height. `.fr-morphing` carries the transition so `prefers-reduced-motion` can take it away.
+
+### Harness
+
+`preview.html` gained `?bookings=<n>`, which sets how many upcoming reservations exist. The captured data always has something upcoming in it, so `0` is the only way to reach the empty row at all, and a number above 1 is how the section is made to resolve taller than the skeleton stood.
+
+### Released as `v1.0.0`
+
+`skeleton-loaders` merged to `master` with `--no-ff` and pushed. Everything above, plus the skeleton work and the past-slot fix in the two entries before this one, ships in the first non-date-numbered release: https://github.com/rk4500/myflame-portal-reskin/releases/tag/v1.0.0. Dated tags (`v2026.09.04.1` and earlier) stop here; the numbering starts at 1.0.0 and moves forward from there.

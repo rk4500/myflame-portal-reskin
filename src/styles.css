@@ -159,6 +159,32 @@
    crowding it — the offer is a next step, not part of the sentence. */
 .fr-empty-action { margin-top: 8px; }
 
+/* An empty state that lives inside a list, not on a page of its own.
+   .fr-empty is built for a whole empty tab — 64px of padding, a 32px
+   icon, three stacked lines — and putting that where one row belongs
+   made the section three rows tall, so the page jumped by ~130px the
+   moment a one-booking day resolved into no bookings at all. This
+   occupies exactly one .fr-row: same padding once its border is counted,
+   same two line boxes, so the skeleton row, a real booking and "nothing
+   booked" are all the same height and nothing below them moves.
+   It must not be mistaken for a booking, though, so it inverts the row's
+   material: hairline dashed instead of filled, secondary title. */
+.fr-nothing {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 15px; border-radius: 12px;
+  border: 1px dashed var(--border); background: transparent;
+}
+.fr-nothing .fr-row-title { color: var(--text-secondary); }
+.fr-nothing-icon { width: 18px; height: 18px; color: var(--text-secondary); opacity: 0.55; }
+.fr-nothing .fr-link-btn { flex-shrink: 0; }
+
+/* A section that is being remeasured after its contents changed shape.
+   Set by morphHeight, which writes the two heights around it — the
+   transition is here so it is themed with everything else, and so
+   prefers-reduced-motion can take it away. */
+.fr-morphing { overflow: hidden; transition: height 280ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) { .fr-morphing { transition: none; } }
+
 .fr-day-group { margin-bottom: 32px; }
 .fr-group-heading {
   font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;

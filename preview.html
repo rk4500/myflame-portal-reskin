@@ -183,6 +183,30 @@
   // against the worst case rather than against the names that happen to
   // be on this semester's timetable. Real data is what the screenshots
   // use; this is what the layout has to survive.
+  // ?bookings=<n> sets how many upcoming reservations exist. The captured
+  // data always has something upcoming in it, so 0 is the only way to
+  // reach Home's "nothing booked" row — the state a real account is in
+  // most days — and a number above 1 is how the bookings section is made
+  // to resolve taller than the one row the skeleton stands for.
+  const __bookings = new URLSearchParams(location.search).get('bookings');
+  if (__bookings !== null) {
+    const P = window.__FLAME_RESKIN_PREVIEW__;
+    const template = P['CustomBookingController.getReservations'][1];
+    const wanted = Number(__bookings) || 0;
+    const grown = [];
+    for (let i = 0; i < wanted; i++) {
+      grown.push({
+        ...template,
+        bookingId: `R-9000${i}`,
+        startDate: `2026-09-0${5 + (i % 4)}`,
+        endDate: `2026-09-0${5 + (i % 4)}`,
+        startDateTime: `0${5 + (i % 4)}/09/2026, ${7 + i}:00 AM`,
+        endDateTime: `0${5 + (i % 4)}/09/2026, ${8 + i}:00 AM`,
+      });
+    }
+    P['CustomBookingController.getReservations'] = grown;
+  }
+
   if (new URLSearchParams(location.search).get('long') === '1') {
     const P = window.__FLAME_RESKIN_PREVIEW__;
     const LONG_COURSE = 'Business Plan Development and Entrepreneurial Finance for Emerging Markets';
