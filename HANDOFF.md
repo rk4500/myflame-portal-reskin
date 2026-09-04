@@ -865,3 +865,67 @@ Logcat cleared *before* launching, which is what the previous entry said to do, 
 
 **One thing to know about the dependencies**: `frida-compile` and `frida-java-bridge` are now declared in the root `package.json` under `dependencies` and committed. That install happened outside this session's commands, but it matches where the binaries actually resolve from (`<repo>/node_modules`) and makes the pipeline's requirements explicit instead of relying on a stray `npm install` somebody ran once, so it is kept.
 
+### Pushed and released as `v2026.09.04.1`
+
+`master` was pushed and the APK attached to a GitHub release: https://github.com/rk4500/myflame-portal-reskin/releases/tag/v2026.09.04.1, built from `d4a18ca` (the scroll + picker commit). The earlier `v2026.09.04` from the same day is one build behind it, from `1ee6fc8` (the autobook confirm panel work). `v2026.09.04.1` is the newest release and the build currently on the phone's `/sdcard/Download/MyFLAME-reskin.apk`.
+
+## Skeletons on Home and Book Slot, and a repaint that stopped happening (2026-09-04, branch `skeleton-loaders`)
+
+### The rule the skeletons follow
+
+A skeleton is the **real element** with its unknown text swapped for a shimmering block of the same metrics — never a lookalike assembled from bare divs. `.fr-skel` is an inline-block holding a non-breaking space, so its line box is exactly one line of whatever type its parent uses: same font, same line-height, same baseline. Width is the only thing a caller passes, in `ch`, and it is a guess about content length that nothing in the layout depends on. That is what makes the loading and loaded screenshots line up row for row instead of settling into place.
+
+Shimmer is a gradient sweep on `background-position`, 1400ms linear, disabled under `prefers-reduced-motion`.
+
+### Home
+
+- **Cold start only** — the title, the date strip and both headings need no data at all, so they are real from the first frame; three class rows and one booking row shimmer. Three, because that is a normal day and a skeleton that guesses high leaves a hole when the data lands short. The strip's has-events dots are the one thing that appears late, since which days carry classes is exactly what is not known yet.
+- **The jitter is gone.** The stale cache paints, the request still goes out, and the answer is now compared against what is on screen (`sameData`, in `persist.js`) and **dropped when identical**. The timetable is semester-static, so the common case was tearing down the entire page to rebuild the same page a second after the tab opened. That was the jitter.
+- **Upcoming bookings no longer disappears when empty.** It used to be omitted entirely, which left the page looking like it had ended early. It now says nothing is booked and offers the Book Slot tab — `renderEmpty` takes an optional `{ label, onClick }` action for this.
+
+### Book Slot
+
+The whole tab used to wait on `getResources` before painting a single pixel, and everything above the slot grid is drawn from that one list.
+
+- **The resource list is cached on its own clock.** `flame-resources-cache`, 7-day TTL, separate from Home's blob because the two expire for different reasons: a day-old class list is nearly right, and a week-old resource list is simply correct — the gym and the classrooms do not change during a semester. Cached list paints immediately, the request still goes out, and only an answer that differs touches the UI (a plain repaint, since a renamed resource changes the rail and the picker together).
+- **The slot grid's times are not a guess.** `knownSlotTimes(resource)` already derived them from the resource's own operating window — `Gym ( 6:00 am to 2:00 pm slot )` is eight hourly slots — falling back to whatever that resource last offered. So the grid is drawn with real labels in the real number of cards, and only the capacity line, the one thing that genuinely needs the server, shimmers.
+- **The cards are filled, not rebuilt.** `createSlotShell` builds the box; when the answer lands those same nodes are looked up by `dataset.start` and mutated in place. Nothing about the grid moves. A card is only created late when the skeleton could not predict it, and anything predicted that the day did not have is dropped.
+- **Past times are not predicted.** On today, a slot that has already started cannot be booked and the portal does not list it, so a skeleton built from the full operating window drew cards that vanished when the answer landed — open the tab in the afternoon and half the grid disappeared. The predicted list is filtered by the same `start > now` predicate the known-slot fill already used, so the skeleton grid is the size the real grid will be. Late enough in the day that nothing is left, there is nothing truthful to draw and it falls back to the spinner, then to "No open slots".
+- **The claim note and the scheduled-autobook list are in the first paint too.** Both come from intents in `localStorage`, not from a request, so holding them back only meant pushing the grid down a line at the worst moment.
+- The spinner is still the honest answer in the one case where nothing can be predicted: a resource with no operating window in its name and nothing remembered.
+
+### Answered by the user, not assumed
+
+Resource/day switches inside the tab get the **same skeleton every time** (not a dimmed hold, not a delayed one). Placeholders **shimmer** rather than pulse. And the empty bookings section should stay on the page with something to say, which is where the empty state's copy and its Book Slot button came from.
+
+### Verification
+
+Screenshots at 390x780 and 1280x900, loading against settled, on both tabs: rows and cards land in identical positions. Both start paths were checked, not only the empty one — cold (no cache, everything shimmers) and **warm** (cache present, which is what a real launch hits and where a mismatch between the predicted grid and the real one would show). One defect found and fixed in that pass — skeleton cards inherited `.fr-slot:disabled { opacity: 0.4 }`, which is the *blocked* look and also dimmed the card's time, the one thing already true. Targeted scenarios on the touched paths (`book-confirm`, `resource-picker-open`, `confirm-scroll`, `picker-reselect`, `autopanel`, `measure`): no errors. Impeccable's mechanical detector over the changed files: clean.
+
+Built and installed on the phone. **Not merged and not pushed** — `skeleton-loaders` is local-only, has no upstream, and nothing here is in a release; `master` still ends at `d4a18ca` / `v2026.09.04.1`. Merging and cutting a release is the next step whenever the user says so.
+
+## The bookings section stopped jumping (2026-09-04, same branch)
+
+Two shapes were wrong, and only one of them was fixable with motion.
+
+### "Nothing booked" was a page-sized empty state in a list slot
+
+`renderEmpty` is built for a whole empty tab: 64px of padding, a 32px icon, three stacked lines and a button. Dropped into Home's bookings section it stood three rows tall, so the skeleton — which stands **one** booking tall, because that is what most days hold — resolved into something ~130px taller and shoved the page down at the worst moment.
+
+`.fr-nothing` replaces it there. It occupies exactly one `.fr-row`: the same 14px of vertical space once its 1px border is counted, and the same two line boxes, because it reuses `.fr-row-title` and `.fr-row-meta` rather than approximating them. It must not be mistaken for a booking, though, so it inverts the row's material — hairline dashed, no fill, secondary title — and carries the offer on the right as a `Book a slot` link. The skeleton row, a real booking row and "nothing booked" now land in the same band (496–554 at 390x844, measured off the screenshots).
+
+Copy is `Nothing booked` / `Bookings open a day ahead.` The first draft named the facilities and ellipsized on mobile, which is what `.fr-row-meta`'s single-line rule does to anything too long for the space left beside the button.
+
+### Motion, where geometry cannot do the job
+
+Everything above removes the jump rather than smoothing it, which is the right order: a 130px shift cannot be animated into something pleasant. What is left is the case the skeleton genuinely cannot predict — it stands one booking tall and the day has three — so `morphHeight` (`src/dom.js`) animates the section from the height it occupied to the height it now needs, 280ms.
+
+**No `requestAnimationFrame` in it.** This WebView services no frames when it decides it has nothing to paint, which is the same fault that broke the confirm-button scroll and the cold-launch cover, so the second height is written synchronously after an `offsetHeight` read flushes layout. `transitionend` is the fast path for cleaning up the inline height; a timer does it regardless, so a dropped transition leaves a correctly sized element instead of one frozen at a stale height. `.fr-morphing` carries the transition so `prefers-reduced-motion` can take it away.
+
+### Harness
+
+`preview.html` gained `?bookings=<n>`, which sets how many upcoming reservations exist. The captured data always has something upcoming in it, so `0` is the only way to reach the empty row at all, and a number above 1 is how the section is made to resolve taller than the skeleton stood.
+
+### Released as `v1.0.0`
+
+`skeleton-loaders` merged to `master` with `--no-ff` and pushed. Everything above, plus the skeleton work and the past-slot fix in the two entries before this one, ships in the first non-date-numbered release: https://github.com/rk4500/myflame-portal-reskin/releases/tag/v1.0.0. Dated tags (`v2026.09.04.1` and earlier) stop here; the numbering starts at 1.0.0 and moves forward from there.

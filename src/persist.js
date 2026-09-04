@@ -52,3 +52,44 @@ export function clearPersistedBookings() {
   delete data.bookings;
   writePersisted(data);
 }
+
+// The facility/resource list is its own cache with its own clock. Home's
+// blob expires in a day because a day-old class list is nearly right and
+// a week-old one is noise; the resource list is different in kind — the
+// gym and the classrooms are the same all semester, so a week-old copy is
+// still correct, and expiring it daily would put a round trip in front of
+// the Book Slot tab for no reason. Separate key, because the two have
+// nothing to do with each other beyond both being last-known data.
+const RESOURCES_KEY = 'flame-resources-cache';
+const RESOURCES_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function readPersistedResources() {
+  try {
+    const data = JSON.parse(localStorage.getItem(RESOURCES_KEY));
+    if (!data || !data.savedAt || Date.now() - data.savedAt > RESOURCES_MAX_AGE_MS) return null;
+    return Array.isArray(data.facilities) && data.facilities.length ? data.facilities : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function writePersistedResources(facilities) {
+  try {
+    localStorage.setItem(RESOURCES_KEY, JSON.stringify({ facilities, savedAt: Date.now() }));
+  } catch (e) {
+    // Same as above: a cache that cannot be written costs a round trip,
+    // nothing else.
+  }
+}
+
+// Two aura payloads compared structurally. They are plain JSON from the
+// same serializer, so key order is stable and stringifying is both
+// correct and quicker than walking them. Used to answer "did anything
+// actually change" before tearing down a page that is already right.
+export function sameData(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch (e) {
+    return false;
+  }
+}

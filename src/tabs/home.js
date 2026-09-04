@@ -9,9 +9,10 @@
 
 import { callAura, resolveUserId } from '../aura.js';
 import { addDays, cleanResourceName, dayLabel, formatBookingWhen, formatTime, parseBookingDateTime, sameDay, startOfToday, startOfWeekMonday } from '../dates.js';
-import { el } from '../dom.js';
-import { readPersisted, writePersisted } from '../persist.js';
+import { el, morphHeight, skel } from '../dom.js';
+import { readPersisted, sameData, writePersisted } from '../persist.js';
 import { buildDateStrip, renderEmpty, switchTab } from '../shell.js';
+import { icon } from '../icons.js';
 import { cache, ui } from '../state.js';
 
 const homeState = { weekStart: startOfWeekMonday(startOfToday()), selected: startOfToday() };
@@ -30,8 +31,17 @@ export async function renderHome(token) {
   homeState.selected = startOfToday();
 
   const stale = (!cache.events || !cache.bookings) ? readPersisted() : null;
+  const painted = { events: null, bookings: null };
   if (stale && stale.events && stale.bookings && token === ui.activeToken) {
+    painted.events = stale.events;
+    painted.bookings = stale.bookings;
     ui.contentEl.replaceChildren(buildHomePage(stale.events, stale.bookings));
+  } else if (!cache.events || !cache.bookings) {
+    // Nothing known yet — first ever launch, or a cache older than a day.
+    // The date strip and the day's own name need no data at all, so they
+    // are real from the first frame and only the parts that are actually
+    // unknown shimmer.
+    if (token === ui.activeToken) ui.contentEl.replaceChildren(buildHomeSkeleton());
   }
 
   const userId = await resolveUserId();
@@ -44,10 +54,83 @@ export async function renderHome(token) {
   writePersisted({ events, bookings });
   if (token !== ui.activeToken) return;
 
+  // The stale paint is usually right — the timetable is semester-static
+  // and bookings change a few times a week — and repainting an identical
+  // page still tears down every node and builds it again, which shows up
+  // as a jitter a moment after the tab opens. So the answer is compared
+  // against what is already on screen and dropped when it matches.
+  if (painted.events && sameData(painted.events, events) && sameData(painted.bookings, bookings)) return;
+
   // homeState is deliberately not reset here: if a day was tapped on the
   // strip while the fetch was in flight, the repaint keeps that choice
   // rather than yanking the view back to today under the finger.
+  //
+  // The bookings section is the one part of this page whose height the
+  // skeleton cannot always predict: it stands one booking tall, which is
+  // what most days hold and exactly what "nothing booked" now occupies,
+  // but a three-booking day resolves taller. Measure what it occupied
+  // before the swap and let it grow into the new height instead of
+  // snapping the rest of the page down.
+  const wasTall = ui.contentEl.querySelector('.fr-home-bookings');
+  const priorHeight = wasTall ? wasTall.offsetHeight : 0;
   ui.contentEl.replaceChildren(buildHomePage(events, bookings));
+  const nowTall = ui.contentEl.querySelector('.fr-home-bookings');
+  if (nowTall) morphHeight(nowTall, priorHeight);
+}
+
+// The loading state is the real page with the unknown parts shimmering:
+// same title, same date strip, same headings, same row boxes. Three class
+// rows and one booking row, because that is the shape of a normal day and
+// a skeleton that guesses high leaves a hole when the data lands short.
+function buildHomeSkeleton() {
+  const page = el('div', { class: 'fr-page', 'aria-busy': 'true' });
+  page.appendChild(el('h1', { class: 'fr-page-title', text: dayLabel(homeState.selected) }));
+  page.appendChild(
+    buildDateStrip({
+      weekStart: homeState.weekStart,
+      selected: homeState.selected,
+      // Which days carry classes is exactly what is not known yet; the
+      // markers appear with the data rather than guessing and correcting.
+      hasEvents: () => false,
+      onSelect: () => {},
+      onPrevWeek: () => {},
+      onNextWeek: () => {},
+    })
+  );
+
+  page.appendChild(el('h2', { class: 'fr-group-heading', text: 'Classes' }));
+  const classes = el('div', { class: 'fr-list' });
+  for (const width of [22, 17, 26]) {
+    classes.appendChild(
+      el('div', { class: 'fr-row' }, [
+        el('span', { class: 'fr-row-time' }, [skel(5)]),
+        el('div', { class: 'fr-row-main' }, [
+          el('p', { class: 'fr-row-title' }, [skel(width)]),
+          el('p', { class: 'fr-row-meta' }, [skel(14)]),
+        ]),
+      ])
+    );
+  }
+  page.appendChild(classes);
+
+  const bookings = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
+  bookings.appendChild(
+    el('div', { class: 'fr-group-heading-row' }, [
+      el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }),
+    ])
+  );
+  bookings.appendChild(
+    el('div', { class: 'fr-list' }, [
+      el('div', { class: 'fr-row' }, [
+        el('div', { class: 'fr-row-main' }, [
+          el('p', { class: 'fr-row-title' }, [skel(16)]),
+          el('p', { class: 'fr-row-meta' }, [skel(24)]),
+        ]),
+      ]),
+    ])
+  );
+  page.appendChild(bookings);
+  return page;
 }
 
 function buildHomePage(events, bookings) {
@@ -122,14 +205,20 @@ function buildHomePage(events, bookings) {
     .filter((b) => b.status === 'Booked' && parseBookingDateTime(b.startDateTime) >= now)
     .sort((a, b) => parseBookingDateTime(a.startDateTime) - parseBookingDateTime(b.startDateTime))
     .slice(0, 5);
+  // The section stays whether or not anything is upcoming. It used to be
+  // dropped entirely when empty, which left the page looking like it had
+  // ended early — and an empty booking list is the one moment where the
+  // obvious next move is to make a booking, so it says that and offers it.
+  const bookingsSection = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
+  const headingRow = el('div', { class: 'fr-group-heading-row' });
+  headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }));
   if (upcomingBookings.length) {
-    const bookingsSection = el('div', { style: 'margin-top: 32px;' });
-    const headingRow = el('div', { class: 'fr-group-heading-row' });
-    headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }));
     const seeAll = el('button', { class: 'fr-link-btn', type: 'button', text: 'See all' });
     seeAll.addEventListener('click', () => switchTab('bookings'));
     headingRow.appendChild(seeAll);
-    bookingsSection.appendChild(headingRow);
+  }
+  bookingsSection.appendChild(headingRow);
+  if (upcomingBookings.length) {
     const list = el('div', { class: 'fr-list' });
     for (const b of upcomingBookings) {
       list.appendChild(
@@ -142,8 +231,27 @@ function buildHomePage(events, bookings) {
       );
     }
     bookingsSection.appendChild(list);
-    page.appendChild(bookingsSection);
+  } else {
+    // Deliberately not renderEmpty: that one is sized for a whole empty
+    // tab and stood three rows tall here, so a day with no bookings
+    // dropped the page ~130px below where the skeleton had put it. This
+    // is one row exactly — same box as a booking, same two lines — drawn
+    // as a hairline outline rather than a filled card so it still cannot
+    // be misread as something that was actually booked.
+    const book = el('button', { class: 'fr-link-btn', type: 'button', text: 'Book a slot' });
+    book.addEventListener('click', () => switchTab('book-slot'));
+    bookingsSection.appendChild(
+      el('div', { class: 'fr-nothing' }, [
+        icon('book', 'fr-nothing-icon'),
+        el('div', { class: 'fr-row-main' }, [
+          el('p', { class: 'fr-row-title', text: 'Nothing booked' }),
+          el('p', { class: 'fr-row-meta', text: 'Bookings open a day ahead.' }),
+        ]),
+        book,
+      ])
+    );
   }
+  page.appendChild(bookingsSection);
 
   return page;
 }
