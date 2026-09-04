@@ -32,3 +32,6 @@ node_modules/
 
 # LLM agents cache and configurations
 .agents/
+
+# Skill pins for this project; local tooling state, not project source.
+skills-lock.json
