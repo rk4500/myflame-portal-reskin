@@ -6,8 +6,9 @@ This file is organised by subject, not by date — dates are kept on individual 
 
 ## Current state
 
-- `master` ships everything described here. Latest release is `v1.0.0` (from `9c33f78`), the first off the old dated tag scheme.
-- The APK on the phone (`/sdcard/Download/MyFLAME-reskin.apk`, and `MyFLAME-reskin-working.apk` at the repo root) is that build, confirmed working on-device by the user.
+- `master` ships everything described here. Latest release is `v1.0.1`.
+- The APK on the phone is that build, installed over the previous one and confirmed on-device by the user.
+- **Release assets are named for their version: `MyFLAME-reskin-v1.0.1.apk` (2026-09-04).** They used to be `MyFLAME-reskin-working.apk`, from when "working" meant *the build that finally worked* — by v1.0.0 every release was a working build, so the word said nothing and the filename could not tell two downloads apart. `*.apk` is gitignored, so this is a release-asset and local-copy convention only; v1.0.0's asset keeps the name it was published under.
 - Live-verified: the whole Android injection path, the reskin rendering, Gyan's thread creation, booking and cancellation.
 - Not live-verified: the autobooking 24h model (see its section), and the login page, which the script deliberately never touches.
 - Branches kept on purpose, not to be deleted without asking: `rail` (rejected design, below), `build-split`, `skeleton-loaders`, `gyan-updates`.
@@ -381,7 +382,8 @@ A comparison board (Rail / Timeline / Quiet-slab against the real schedule) was 
 
 | Tag | Notes |
 |---|---|
-| `v1.0.0` | Current. Skeleton loaders, the repaint drop, past-slot prediction, the one-row empty state. First non-dated tag; numbering moves forward from here. |
+| `v1.0.1` | Current. Gyan suggestion chips no longer fire a turn the composer is refusing, and a failed turn no longer leaves the tab dead. Book Slot answers a spent operating window locally instead of spinning into a bare empty state, and defaults to a window that is still live. |
+| `v1.0.0` | Skeleton loaders, the repaint drop, past-slot prediction, the one-row empty state. First non-dated tag; numbering moves forward from here. |
 | `v2026.09.04.1` | Confirm-button scroll + picker highlight. |
 | `v2026.09.04` | Autobook confirm panel, daily repeat, the four rule bugs. |
 | `v2026.09.03.2` | Predates the `src/` split, the cold-launch cover and the autobook UI work. |
