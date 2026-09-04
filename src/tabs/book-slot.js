@@ -43,6 +43,32 @@ function sortResources(resources) {
   });
 }
 
+// A resource's day is spent when its slot times are known and every one of
+// them has already started. That is knowable locally — knownSlotTimes reads
+// the operating window out of the resource's own name — so it is an answer,
+// not a guess, and the grid never has to ask the server for it.
+//
+// An unparseable time makes every() false rather than true: not knowing is
+// not the same as knowing it is over, and the request is the right move then.
+function windowSpent(resource, isoDate, nowMs) {
+  const known = knownSlotTimes(resource);
+  if (!known.length) return false;
+  return known.every((sl) => {
+    const start = slotStartDate(isoDate, sl.startTime);
+    return !!start && start.getTime() <= nowMs;
+  });
+}
+
+// Default to a window the user can actually act on. The resource list is
+// sorted by start time, so resources[0] is the *earliest* window — which
+// after 1 pm is the one gym option guaranteed to be over. Picking the first
+// live one instead is what keeps the common case ("book the gym") from
+// opening on a dead end.
+function firstLiveResource(facility, isoDate, nowMs) {
+  if (!facility || !facility.resources.length) return null;
+  return facility.resources.find((r) => !windowSpent(r, isoDate, nowMs)) || facility.resources[0];
+}
+
 // The confirm panel is appended below the slot grid, usually past the fold,
 // and it is the last thing on the page — so selecting a slot scrolls the
 // whole page to the bottom, which is what the panel opening should feel
@@ -163,7 +189,8 @@ export async function renderBookSlot(token) {
   const facilities = bookState.facilities;
   if (token !== ui.activeToken) return;
   if (!bookState.resourceId && facilities[bookState.categoryIdx]) {
-    bookState.resourceId = facilities[bookState.categoryIdx].resources[0].resourceId;
+    const live = firstLiveResource(facilities[bookState.categoryIdx], isoDateLocal(bookState.date), Date.now());
+    bookState.resourceId = live.resourceId;
   }
 
   const page = el('div', { class: 'fr-page' });
@@ -215,10 +242,74 @@ export async function renderBookSlot(token) {
     return btn;
   }
 
+  // The window this resource covers, as the day nav writes it — "6 AM – 2 PM"
+  // — built from the resource's own slot times rather than re-parsing its
+  // name, so it matches the cards the grid would have drawn.
+  function windowLabel(resource) {
+    const known = knownSlotTimes(resource);
+    if (!known.length) return cleanResourceName(resource.name);
+    return compactTimeRange(known[0].startTime, known[known.length - 1].endTime);
+  }
+
+  // The same facility's other window for the same thing: the 3 PM gym when
+  // the 6 AM gym is over. Matched on the resource *class* — the name without
+  // its window suffix — so a spent gym never offers a squash court.
+  function liveSiblingWindow(resource, isoDate, nowMs) {
+    const facility = facilities[bookState.categoryIdx];
+    if (!facility) return null;
+    const klass = cleanResourceName(resource.name).toLowerCase();
+    return facility.resources.find((r) => (
+      r.resourceId !== resource.resourceId
+      && cleanResourceName(r.name).toLowerCase() === klass
+      && !windowSpent(r, isoDate, nowMs)
+    )) || null;
+  }
+
+  // Every slot this resource has for this day is already behind us, and that
+  // was knowable without asking. Drawn immediately: no skeleton (there is
+  // nothing truthful to predict), no spinner, and no request whose only
+  // possible answer is an empty list.
+  function renderWindowSpent(resource, isoDate, nowMs) {
+    const sibling = liveSiblingWindow(resource, isoDate, nowMs);
+    const action = sibling
+      ? {
+        label: `Switch to ${windowLabel(sibling)}`,
+        onClick: () => {
+          bookState.resourceId = sibling.resourceId;
+          resourcePicker.value = sibling.resourceId;
+          refreshAvailability();
+        },
+      }
+      : {
+        label: 'Try tomorrow',
+        onClick: () => {
+          bookState.date = addDays(bookState.date, 1);
+          renderDayNav();
+          paintResourceOptions();
+          refreshAvailability();
+        },
+      };
+    resultsWrap.replaceChildren(
+      renderEmpty(
+        'clock',
+        `${windowLabel(resource)} is bookable from tomorrow`,
+        '',
+        'fr-empty--inline',
+        action
+      ),
+      buildScheduledList(refreshAvailability)
+    );
+  }
+
   async function refreshAvailability() {
     confirmWrap.replaceChildren();
     const resource = currentResource();
     const isoDate = isoDateLocal(bookState.date);
+
+    if (resource && windowSpent(resource, isoDate, Date.now())) {
+      renderWindowSpent(resource, isoDate, Date.now());
+      return;
+    }
 
     // The scheduled-autobook list below the grid is read out of
     // localStorage, so it is drawn now rather than after a request it
@@ -299,8 +390,17 @@ export async function renderBookSlot(token) {
     if (!timeline.length) {
       resultsWrap.replaceChildren(
         serverMessage
-          ? el('p', { class: 'fr-rail-meta', text: serverMessage })
-          : renderEmpty('book', 'No open slots', 'Try a different date.', 'fr-empty--inline')
+          ? renderEmpty('clock', 'Nothing to book here', serverMessage, 'fr-empty--inline')
+          : renderEmpty('clock', 'No open slots', 'Every slot for this day is taken or past.', 'fr-empty--inline', {
+            label: 'Try tomorrow',
+            onClick: () => {
+              bookState.date = addDays(bookState.date, 1);
+              renderDayNav();
+              paintResourceOptions();
+              refreshAvailability();
+            },
+          }),
+        buildScheduledList(refreshAvailability)
       );
       return;
     }
@@ -673,16 +773,31 @@ export async function renderBookSlot(token) {
     btn.classList.toggle('is-active', idx === bookState.categoryIdx);
     btn.addEventListener('click', () => {
       bookState.categoryIdx = idx;
-      bookState.resourceId = facility.resources[0].resourceId;
+      const live = firstLiveResource(facility, isoDateLocal(bookState.date), Date.now());
+      bookState.resourceId = live.resourceId;
       facilityList.querySelectorAll('.fr-facility-item').forEach((b, i) => b.classList.toggle('is-active', i === idx));
-      resourcePicker.setOptions(facility.resources.map((r) => ({ value: r.resourceId, text: r.name })));
+      paintResourceOptions();
       resourcePicker.value = bookState.resourceId;
       refreshAvailability();
     });
     facilityList.appendChild(btn);
   });
 
-  resourcePicker.setOptions(facilities[bookState.categoryIdx].resources.map((r) => ({ value: r.resourceId, text: r.name })));
+  // Repainted on a date step as well as a facility change: "over for today"
+  // is true of a resource *on a date*, and stepping to tomorrow makes the
+  // 6 am gym live again.
+  function paintResourceOptions() {
+    const facility = facilities[bookState.categoryIdx];
+    const isoDate = isoDateLocal(bookState.date);
+    const nowMs = Date.now();
+    resourcePicker.setOptions(facility.resources.map((r) => ({
+      value: r.resourceId,
+      text: r.name,
+      note: windowSpent(r, isoDate, nowMs) ? 'Bookable tomorrow' : '',
+    })));
+  }
+
+  paintResourceOptions();
   resourcePicker.value = bookState.resourceId;
 
   // Facilities are cached above and only the availability results depend
@@ -698,16 +813,19 @@ export async function renderBookSlot(token) {
         onPrev: () => {
           bookState.date = addDays(bookState.date, -1);
           renderDayNav();
+          paintResourceOptions();
           refreshAvailability();
         },
         onNext: () => {
           bookState.date = addDays(bookState.date, 1);
           renderDayNav();
+          paintResourceOptions();
           refreshAvailability();
         },
         onToday: () => {
           bookState.date = startOfToday();
           renderDayNav();
+          paintResourceOptions();
           refreshAvailability();
         },
       })

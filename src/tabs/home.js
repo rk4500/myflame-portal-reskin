@@ -242,7 +242,7 @@ function buildHomePage(events, bookings) {
     book.addEventListener('click', () => switchTab('book-slot'));
     bookingsSection.appendChild(
       el('div', { class: 'fr-nothing' }, [
-        icon('book', 'fr-nothing-icon'),
+        icon('clock', 'fr-nothing-icon'),
         el('div', { class: 'fr-row-main' }, [
           el('p', { class: 'fr-row-title', text: 'Nothing booked' }),
           el('p', { class: 'fr-row-meta', text: 'Bookings open a day ahead.' }),

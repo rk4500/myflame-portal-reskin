@@ -14,7 +14,7 @@ const TABS = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
   { id: 'bookings', label: 'My Bookings', icon: 'bookings' },
-  { id: 'book-slot', label: 'Book Slot', icon: 'book' },
+  { id: 'book-slot', label: 'Book Slot', icon: 'clock' },
   { id: 'gyan', label: 'Gyan', icon: 'sparkle' },
 ];
 
@@ -256,7 +256,11 @@ export function buildPicker({ ariaLabel, onChange }) {
     class: 'fr-picker-btn', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': ariaLabel,
   });
   const btnLabel = el('span', { class: 'fr-picker-btn-label' });
-  btn.append(btnLabel, icon('chevronDown'));
+  // The note is its own element rather than text appended to the label,
+  // because the label ellipsises: concatenated, the status would be the
+  // first thing a long resource name truncated away.
+  const btnNote = el('span', { class: 'fr-picker-btn-note' });
+  btn.append(btnLabel, btnNote, icon('chevronDown'));
   const panel = el('div', { class: 'fr-picker-panel' });
   const list = el('div', { class: 'fr-picker-list', role: 'listbox' });
   panel.appendChild(list);
@@ -265,16 +269,30 @@ export function buildPicker({ ariaLabel, onChange }) {
   let options = [];
   let value = null;
 
+  // An option's `note` is a status the caller already knows and the user
+  // would otherwise have to discover by selecting the option and reading an
+  // empty result — a gym window that is over for the chosen day, say. It
+  // annotates, it never disables: the option stays selectable, because the
+  // status belongs to the option *and the current date*, and the date is one
+  // tap away.
+  function paintButton(opt) {
+    btnLabel.textContent = opt ? opt.text : '';
+    btnNote.textContent = opt && opt.note ? opt.note : '';
+    btnNote.hidden = !(opt && opt.note);
+  }
+
   function paintPanel() {
     list.replaceChildren();
     for (const opt of options) {
       const item = el('button', {
         class: `fr-picker-option${opt.value === value ? ' is-selected' : ''}`,
-        type: 'button', role: 'option', 'aria-selected': String(opt.value === value), text: opt.text,
+        type: 'button', role: 'option', 'aria-selected': String(opt.value === value),
       });
+      item.append(el('span', { class: 'fr-picker-option-label', text: opt.text }));
+      if (opt.note) item.append(el('span', { class: 'fr-picker-option-note', text: opt.note }));
       item.addEventListener('click', () => {
         value = opt.value;
-        btnLabel.textContent = opt.text;
+        paintButton(opt);
         // Repaint before closing: the highlight is painted from `value` at
         // paint time, so without this the panel keeps showing the previous
         // option as selected the next time it opens.
@@ -316,12 +334,16 @@ export function buildPicker({ ariaLabel, onChange }) {
     },
     set value(v) {
       value = v;
-      const found = options.find((o) => o.value === v);
-      btnLabel.textContent = found ? found.text : '';
+      paintButton(options.find((o) => o.value === v) || null);
       paintPanel();
     },
     setOptions(newOptions) {
       options = newOptions;
+      // Re-resolve the collapsed label against the new list: setOptions is
+      // called on a date step purely to refresh the notes, and without this
+      // the button keeps the stale note while the panel shows the new one.
+      const found = options.find((o) => o.value === value);
+      if (found) paintButton(found);
       paintPanel();
     },
   };

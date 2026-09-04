@@ -190,7 +190,7 @@ function getSmartGyanChips() {
   }
 
   chips.push({ text: "What is my next class?", label: "Next class", icon: 'calendar' });
-  chips.push({ text: "Are sports slots available today?", label: "Sports slots", icon: 'book' });
+  chips.push({ text: "Are sports slots available today?", label: "Sports slots", icon: 'clock' });
 
   return chips;
 }

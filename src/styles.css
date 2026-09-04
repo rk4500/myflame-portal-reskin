@@ -302,12 +302,25 @@
 .fr-picker.is-open .fr-picker-panel { display: block; }
 .fr-picker-list { padding: 4px; max-height: 280px; overflow-y: auto; }
 .fr-picker-option {
-  display: block; width: 100%; text-align: left; font: inherit; color: var(--text); font-size: 0.9375rem;
+  display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; font: inherit;
+  color: var(--text); font-size: 0.9375rem;
   background: transparent; border: none; border-radius: 7px; padding: 9px 10px;
-  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer; white-space: nowrap; overflow: hidden;
 }
+.fr-picker-option-label { overflow: hidden; text-overflow: ellipsis; }
 .fr-picker-option:hover { background: var(--bg-elevated); }
 .fr-picker-option.is-selected { color: var(--accent); font-weight: 600; }
+
+/* A status the row carries, not a second label: it sits at the far edge,
+   never truncates (the name gives way first), and stays quiet enough that
+   the row still reads as one selectable thing rather than two. The option
+   remains fully selectable — a window that is over today is the right
+   choice for tomorrow, which the day nav is one tap away from. */
+.fr-picker-option-note, .fr-picker-btn-note {
+  margin-left: auto; flex-shrink: 0; font-size: 0.75rem; font-weight: 500; white-space: nowrap;
+  color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.fr-picker-option.is-selected .fr-picker-option-note { font-weight: 500; }
 
 /* Day navigator (Calendar + Book Slot share this) */
 .fr-daynav { display: flex; align-items: center; gap: 6px; }
