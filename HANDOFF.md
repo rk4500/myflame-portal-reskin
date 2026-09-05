@@ -390,7 +390,7 @@ Checked and clean, so they need no second look:
 - `cleanResourceName().toLowerCase()` in `resourceClassKey` is safe. `toLowerCase` is locale-independent by spec; only `toLocaleLowerCase` carries the Turkish dotless-i behaviour.
 - Events arrive as `"2025-03-18T10:00:00"`, a date-time with **no offset**, which the spec parses as *local* — so the wall-clock time displayed is stable in any timezone.
 - `parseBookingDateTime` leans on `new Date("2026-08-31 9:00 AM")`, a format no spec requires. Tested on V8 with a plain space, U+00A0 and U+202F: all three parse. So an ICU upgrade on the portal's side won't break it in WebView or Chrome. **Firefox and Safari are untested** — only the desktop userscript ever runs there.
-- The remaining `Map`/`Set` keys (`autobook.js:444,450`) are intent ids, not formatted text.
+- The remaining `Map`/`Set` keys are intent ids or ISO dates, never formatted text: `paintAutoBookBanner`'s two sets (`autobook.js:480,492`) hold intent ids, and `runAutoBook`'s `claimed` (`autobook.js:523`) is keyed `resourceClassKey|isoDate`.
 
 ## Open items
 
