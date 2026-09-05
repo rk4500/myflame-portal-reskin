@@ -68,8 +68,9 @@ chromium --headless=new --window-size=390,844 \
 | `?auto=wrapcheck` (+ `-week`, `-cancel`, `-confirm`, `-sched`) | any text wrapping or overflowing that isn't meant to |
 | `?auto=calfit` | calendar blocks' content height against their box height |
 | `?auto=sched-rule`, `?auto=sched-rule-cross` | one auto-booking per resource class per day, asserted |
+| `?auto=daily-from-book` | a daily series started from an ordinary booking, asserted |
 
-Pair `?auto=wrapcheck` with `?long=1`, which swaps every portal-supplied string for a much longer one — the layout is checked against the worst case, while screenshots stay on real data. `?seed=due` and `?seed=twin` plant auto-book intents so the runner fires on load.
+Pair `?auto=wrapcheck` with `?long=1`, which swaps every portal-supplied string for a much longer one — the layout is checked against the worst case, while screenshots stay on real data. `?seed=due` and `?seed=twin` plant auto-book intents so the runner fires on load; `?seed=daily-future`, `?seed=week-claimed` and `?seed=series-clash` plant the states the daily-series rules are asserted against.
 
 ## Rebuilding the APK
 
