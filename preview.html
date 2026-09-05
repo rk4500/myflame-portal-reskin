@@ -311,6 +311,45 @@
         facilityName: 'Sports Facilities', date: plus(1), startTime: '1:00 PM', endTime: '2:00 PM',
         repeat: null, state: 'waiting', message: '', createdAt: Date.now() },
     ]));
+  } else if (seed === 'daily-future') {
+    // A daily series set for a later day, so a series begun today from
+    // either panel has something to replace. Pair it with
+    // ?auto=daily-from-book: the manual panel must warn about it and the
+    // booking must actually remove it, exactly as the autobook panel does.
+    const slot = firstOpenGymSlot();
+    const pad = (n) => String(n).padStart(2, '0');
+    const base = new Date(slot.date + 'T00:00:00');
+    base.setDate(base.getDate() + 2);
+    localStorage.setItem('flame-auto-book', JSON.stringify([
+      { id: 'laterseries', resourceId: 'a230K00000945JHQAY', resourceName: 'Gym ( 6:00 am to 2:00 pm slot )',
+        facilityName: 'Sports Facilities',
+        date: `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`,
+        startTime: '8:00 AM', endTime: '9:00 AM', repeat: 'daily',
+        state: 'waiting', message: '', createdAt: Date.now() },
+    ]));
+  } else if (seed === 'week-claimed') {
+    // Every day the lookahead can reach already claimed, by one-offs
+    // rather than a series (a future series would simply be replaced).
+    // The rare case where a daily started from a booking has nowhere to
+    // begin — it must say so instead of arming nothing in silence.
+    const slot = firstOpenGymSlot();
+    const pad = (n) => String(n).padStart(2, '0');
+    const base = new Date(slot.date + 'T00:00:00');
+    const plus = (n) => {
+      const d = new Date(base); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    localStorage.setItem('flame-auto-book', JSON.stringify(
+      // From day 0: the booked day's own claim is spent by the booking, so
+      // whichever day the scenario lands on, the seven days behind the
+      // lookahead are all still taken.
+      [0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({
+        id: `claim${n}`, resourceId: 'a230K00000945JHQAY',
+        resourceName: 'Gym ( 6:00 am to 2:00 pm slot )', facilityName: 'Sports Facilities',
+        date: plus(n), startTime: '1:00 PM', endTime: '2:00 PM', repeat: null,
+        state: 'waiting', message: '', createdAt: Date.now(),
+      }))
+    ));
   } else if (seed === 'twin') {
     const slot = firstOpenGymSlot();
     const base = { facilityName: 'Sports Facilities', ...slot, state: 'waiting', message: '', createdAt: Date.now() };
@@ -638,6 +677,66 @@
       await wait(400);
       out.push('notice title: ' + (document.querySelector('.fr-banner-title')?.textContent || 'NONE'));
       out.push('notice note:  ' + (document.querySelector('.fr-banner-note')?.textContent || 'NONE'));
+      const pre = document.createElement('pre');
+      pre.id = 'measure';
+      pre.textContent = out.join('\n');
+      document.body.appendChild(pre);
+    }
+    if (auto === 'daily-panel') {
+      // The manual panel with Daily switched on — the one state a
+      // screenshot cannot reach on its own, since the note only exists
+      // once the toggle is.
+      await wait(500);
+      (await findDayWith('.fr-slot:not(:disabled):not(.fr-slot--later)'))?.click();
+      await wait(400);
+      document.querySelector('.fr-confirm-panel .fr-switch')?.click();
+      await wait(300);
+      document.querySelector('.fr-content').scrollTop = 9999;
+    }
+    if (auto === 'daily-from-book') {
+      // A daily series started from an ordinary booking: the tapped slot
+      // is booked outright and the repeat arms on the next free day, so
+      // saying "every day" no longer means walking forward to a day whose
+      // slots the portal will not sell yet. Asserts what got scheduled and
+      // that the series claims the day it reaches, same as any other.
+      await wait(500);
+      // The panel refuses a day this account already holds a booking on,
+      // which the captured data has — so the scenario walks to a day whose
+      // Confirm is actually live rather than asserting against a dead one.
+      let bookedDay = '?';
+      for (let i = 0; i <= 3; i++) {
+        const tile = document.querySelector('.fr-slot:not(:disabled):not(.fr-slot--later)');
+        if (tile) {
+          tile.click();
+          await wait(450);
+          if (!document.querySelector('.fr-confirm-submit')?.disabled) {
+            bookedDay = document.querySelector('.fr-daynav-label')?.textContent || '?';
+            break;
+          }
+        }
+        await nextDay();
+      }
+      const out = ['booking day: ' + bookedDay];
+      out.push('daily switch present: ' + !!document.querySelector('.fr-confirm-panel .fr-switch'));
+      document.querySelector('.fr-confirm-panel .fr-switch')?.click();
+      await wait(120);
+      const shown = (sel) => {
+        const n = document.querySelector(sel);
+        return n && n.style.display !== 'none' && n.textContent ? n.textContent : 'NONE';
+      };
+      out.push('note on:   ' + shown('.fr-confirm-daily'));
+      out.push('clash on:  ' + shown('.fr-confirm-daily-clash'));
+      document.querySelector('.fr-confirm-panel .fr-btn--primary')?.click();
+      await wait(600);
+      out.push('success panel: ' + (document.querySelector('.fr-success-panel') ? 'yes' : 'NO'));
+      out.push('follow-up:     ' + (document.querySelector('.fr-success-panel + p')?.textContent || 'NONE'));
+      const waiting = () => JSON.parse(localStorage.getItem('flame-auto-book') || '[]')
+        .filter((i) => i.state === 'waiting');
+      out.push('intents: ' + waiting().map((i) => `${i.date} ${i.startTime}${i.repeat ? ' [daily]' : ''}`).join(' | '));
+      out.push('sched rows: ' + document.querySelectorAll('.fr-sched-row').length);
+      await nextDay();
+      out.push('--- next day: ' + (document.querySelector('.fr-daynav-label')?.textContent || '?') + ' ---');
+      out.push('claim note: ' + (document.querySelector('.fr-slot-notice')?.textContent || 'NONE'));
       const pre = document.createElement('pre');
       pre.id = 'measure';
       pre.textContent = out.join('\n');

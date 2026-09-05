@@ -807,10 +807,12 @@
   // seven of those in a row means something else is going on.
   const SERIES_LOOKAHEAD_DAYS = 7;
 
+  // Returns the occurrence it pushed, or null if the whole lookahead is
+  // claimed — the caller may have something to say about that.
   function spawnNextOccurrence(intent, list) {
-    if (intent.repeat !== 'daily') return;
+    if (intent.repeat !== 'daily') return null;
     const start = slotStartDate(intent.date, intent.startTime);
-    if (!start) return;
+    if (!start) return null;
     // Step over any day already claimed for this resource class rather than
     // stopping at it. This used to `return` on the first clash, which killed
     // the series outright: schedule a one-off gym for Friday, then a daily
@@ -821,7 +823,7 @@
     for (let ahead = 1; ahead <= SERIES_LOOKAHEAD_DAYS; ahead++) {
       const nextDate = isoDateLocal(addDays(start, ahead));
       if (conflictingIntent(intent.resourceName, nextDate, list)) continue;
-      list.push({
+      const next = {
         ...intent,
         id: `i${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
         date: nextDate,
@@ -829,9 +831,50 @@
         message: '',
         seen: false,
         createdAt: Date.now(),
-      });
-      return;
+      };
+      list.push(next);
+      return next;
     }
+    return null;
+  }
+
+  // A daily series begun from a booking that was made right now, rather than
+  // from an intent waiting for its window. The slot for `date` is already
+  // booked by the time this is called, so there is no intent for it and
+  // nothing to settle — the series starts at the next occurrence, which is
+  // exactly what spawnNextOccurrence produces once a day is done with.
+  //
+  // The rules a series answers to are the same whichever panel started it:
+  // a series beginning today supersedes any daily set for a later day, and
+  // it steps over days already claimed rather than stopping at the first.
+  // Returns the armed occurrence, or null if the lookahead found no free day.
+  function startDailySeries({ resource, facilityName, date, startTime, endTime, purpose, coAttendee }) {
+    let list = loadIntents();
+    const isoDate = isoDateLocal(date);
+    const futures = futureDailyIntents(resource.name, isoDate, list);
+    if (futures.length > 0) {
+      const futureIds = new Set(futures.map((f) => f.id));
+      list = list.filter((i) => !futureIds.has(i.id));
+    }
+    const next = spawnNextOccurrence({
+      resourceId: resource.resourceId,
+      resourceName: resource.name,
+      facilityName: facilityName || '',
+      date: isoDate,
+      startTime,
+      endTime,
+      purpose: purpose || '',
+      coAttendee: coAttendee || '',
+      repeat: 'daily',
+      state: 'waiting',
+      message: '',
+      createdAt: Date.now(),
+    }, list);
+    // Nothing armed means nothing changed: the future series that would have
+    // been replaced is left alone rather than removed in favour of a series
+    // that does not exist.
+    if (next) saveIntents(list);
+    return next;
   }
 
   function removeIntent(id) {
@@ -1091,6 +1134,9 @@
         if (Date.now() >= start.getTime()) {
           intent.state = 'failed';
           intent.message = 'The slot started before it could be booked.';
+          // Settled, so the series moves on. A morning the app was never
+          // opened in must not be the morning the series quietly ends.
+          spawnNextOccurrence(intent, list);
           changed = true;
           continue;
         }
@@ -1107,6 +1153,13 @@
             claimed.add(classKey);
             intent.state = 'failed';
             intent.message = `You already have a ${cleanResourceName(intent.resourceName)} booking that day.`;
+            // The same death spawnNextOccurrence's lookahead was written to
+            // prevent, by the other door: a day claimed by a *booking* rather
+            // than by an intent settled this occurrence and spawned nothing,
+            // so a series met the first day you had booked by hand and
+            // silently never ran again. One booking a day still holds — the
+            // series just resumes the day after.
+            spawnNextOccurrence(intent, list);
             changed = true;
             continue;
           }
@@ -2230,6 +2283,26 @@
         : 'An autobook is already scheduled for this day. Stop it below to book this day yourself.';
     }
 
+    // One wording for one rule, wherever it is set from. A daily series
+    // beginning today supersedes any daily set for a later day, and both
+    // panels can begin one, so both say the same sentence about it.
+    function dailyClashText(futures) {
+      if (!futures.length) return '';
+      const first = futures[0];
+      const parts = first.date.split('-').map(Number);
+      const firstDate = new Date(parts[0], parts[1] - 1, parts[2]);
+      return `Replaces daily autobook from ${dayLabel(firstDate)} (${compactTimeRange(first.startTime, first.endTime)}).`;
+    }
+
+    // A booking leaves its success panel on screen, so the grid is not
+    // repainted around it — but the list under the grid has just gained a
+    // series, or lost the intent this booking spent. Rebuilt in place;
+    // refreshAvailability would clear the panel being read.
+    function repaintScheduledList() {
+      const old = resultsWrap.querySelector('.fr-sched');
+      if (old) old.replaceWith(buildScheduledList(refreshAvailability));
+    }
+
     function openConfirm(slot, claimedBy) {
       // currentResource(), not `resource`: that binding is local to
       // refreshAvailability and this is a sibling of it, not a child.
@@ -2272,9 +2345,41 @@
             clearPersistedBookings();
             // This booking just spent the day's one allowance, so a pending
             // autobook for the same resource that day can only fail now.
-            // Clearing it here is the promise the warning above made.
+            // Clearing it here is the promise the warning above made. Done
+            // before the series is armed, so the day it frees is a day the
+            // series is allowed to step onto.
             if (claimedBy) removeIntent(claimedBy.id);
-            confirmWrap.replaceChildren(el('div', { class: 'fr-success-panel', text: result }));
+            // Today's slot is booked outright; the repeat starts at the next
+            // occurrence, on the first day ahead that nothing else claims.
+            const series = repeatSwitch.checked
+              ? startDailySeries({
+                  resource,
+                  facilityName: facility.facility_Name,
+                  date: bookState.date,
+                  startTime: slot.startTime,
+                  endTime: slot.endTime,
+                  purpose: purposeInput ? purposeInput.value || '' : '',
+                  coAttendee: attendeeInput ? attendeeInput.value || '' : '',
+                })
+              : null;
+            const seriesStart = series ? slotStartDate(series.date, series.startTime) : null;
+            confirmWrap.replaceChildren(
+              el('div', { class: 'fr-success-panel', text: result }),
+              // Said only when a repeat was asked for: what was armed and
+              // where to call it off, or why nothing was.
+              ...(repeatSwitch.checked
+                ? [series
+                    ? el('p', {
+                        class: 'fr-confirm-note',
+                        text: `Daily autobook starts ${seriesStart ? shortDayLabel(seriesStart) : series.date}. Stop it below.`,
+                      })
+                    : el('p', {
+                        class: 'fr-confirm-warn',
+                        text: 'Daily not started — an autobook already covers the next 7 days.',
+                      })]
+                : [])
+            );
+            repaintScheduledList();
           } else {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Confirm booking';
@@ -2312,8 +2417,31 @@
           })
         : null;
 
+      // The same Daily toggle the autobook panel carries. A series had to be
+      // started from a future day before this — the only day whose slots are
+      // not yet bookable — which is a strange place to have to go to say
+      // "every day". Here it books this slot now and repeats from tomorrow.
+      const futures = futureDailyIntents(resource.name, isoDateLocal(bookState.date));
+      const dailyNote = el('p', { class: 'fr-confirm-note fr-confirm-daily' });
+      const clashWarn = el('p', { class: 'fr-confirm-warn fr-confirm-daily-clash' });
+
+      function updateDailyLines() {
+        const on = repeatSwitch.checked;
+        // The distinction worth the line: this one is booked, the rest are
+        // only attempted, each when its own window opens.
+        dailyNote.textContent = on ? 'Books now. Each following day is tried as its window opens.' : '';
+        dailyNote.style.display = on ? 'block' : 'none';
+        const clash = on ? dailyClashText(futures) : '';
+        clashWarn.textContent = clash;
+        clashWarn.style.display = clash ? 'block' : 'none';
+      }
+
+      const repeatSwitch = buildSwitch({ label: 'Daily', onChange: updateDailyLines });
+      updateDailyLines();
+
       const header = el('div', { class: 'fr-confirm-header' }, [
         el('p', { class: 'fr-confirm-panel-title', text: `Book ${compactTimeRange(slot.startTime, slot.endTime)}` }),
+        repeatSwitch.el,
       ]);
 
       const inputsWrap = (purposeInput || attendeeInput)
@@ -2329,6 +2457,8 @@
           ...(inputsWrap ? [inputsWrap] : []),
           ...(warning ? [warning] : []),
           conflictSlot,
+          dailyNote,
+          clashWarn,
           submitBtn,
         ])
       );
@@ -2351,19 +2481,13 @@
         : null;
       const isoDate = isoDateLocal(bookState.date);
       const futures = futureDailyIntents(resource.name, isoDate);
-      const clashWarn = el('p', { class: 'fr-confirm-warn' });
+      const clashWarn = el('p', { class: 'fr-confirm-warn fr-confirm-daily-clash' });
       clashWarn.style.display = 'none';
 
       function updateClashWarn() {
-        if (repeatSwitch.checked && futures.length > 0) {
-          const first = futures[0];
-          const parts = first.date.split('-').map(Number);
-          const firstDate = new Date(parts[0], parts[1] - 1, parts[2]);
-          clashWarn.textContent = `Replaces daily autobook from ${dayLabel(firstDate)} (${compactTimeRange(first.startTime, first.endTime)}).`;
-          clashWarn.style.display = 'block';
-        } else {
-          clashWarn.style.display = 'none';
-        }
+        const text = repeatSwitch.checked ? dailyClashText(futures) : '';
+        clashWarn.textContent = text;
+        clashWarn.style.display = text ? 'block' : 'none';
       }
 
       const repeatSwitch = buildSwitch({ label: 'Daily', onChange: updateClashWarn });

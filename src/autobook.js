@@ -214,10 +214,12 @@ export function scheduleIntent({ resource, facilityName, date, startTime, endTim
 // seven of those in a row means something else is going on.
 const SERIES_LOOKAHEAD_DAYS = 7;
 
+// Returns the occurrence it pushed, or null if the whole lookahead is
+// claimed — the caller may have something to say about that.
 function spawnNextOccurrence(intent, list) {
-  if (intent.repeat !== 'daily') return;
+  if (intent.repeat !== 'daily') return null;
   const start = slotStartDate(intent.date, intent.startTime);
-  if (!start) return;
+  if (!start) return null;
   // Step over any day already claimed for this resource class rather than
   // stopping at it. This used to `return` on the first clash, which killed
   // the series outright: schedule a one-off gym for Friday, then a daily
@@ -228,7 +230,7 @@ function spawnNextOccurrence(intent, list) {
   for (let ahead = 1; ahead <= SERIES_LOOKAHEAD_DAYS; ahead++) {
     const nextDate = isoDateLocal(addDays(start, ahead));
     if (conflictingIntent(intent.resourceName, nextDate, list)) continue;
-    list.push({
+    const next = {
       ...intent,
       id: `i${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
       date: nextDate,
@@ -236,9 +238,50 @@ function spawnNextOccurrence(intent, list) {
       message: '',
       seen: false,
       createdAt: Date.now(),
-    });
-    return;
+    };
+    list.push(next);
+    return next;
   }
+  return null;
+}
+
+// A daily series begun from a booking that was made right now, rather than
+// from an intent waiting for its window. The slot for `date` is already
+// booked by the time this is called, so there is no intent for it and
+// nothing to settle — the series starts at the next occurrence, which is
+// exactly what spawnNextOccurrence produces once a day is done with.
+//
+// The rules a series answers to are the same whichever panel started it:
+// a series beginning today supersedes any daily set for a later day, and
+// it steps over days already claimed rather than stopping at the first.
+// Returns the armed occurrence, or null if the lookahead found no free day.
+export function startDailySeries({ resource, facilityName, date, startTime, endTime, purpose, coAttendee }) {
+  let list = loadIntents();
+  const isoDate = isoDateLocal(date);
+  const futures = futureDailyIntents(resource.name, isoDate, list);
+  if (futures.length > 0) {
+    const futureIds = new Set(futures.map((f) => f.id));
+    list = list.filter((i) => !futureIds.has(i.id));
+  }
+  const next = spawnNextOccurrence({
+    resourceId: resource.resourceId,
+    resourceName: resource.name,
+    facilityName: facilityName || '',
+    date: isoDate,
+    startTime,
+    endTime,
+    purpose: purpose || '',
+    coAttendee: coAttendee || '',
+    repeat: 'daily',
+    state: 'waiting',
+    message: '',
+    createdAt: Date.now(),
+  }, list);
+  // Nothing armed means nothing changed: the future series that would have
+  // been replaced is left alone rather than removed in favour of a series
+  // that does not exist.
+  if (next) saveIntents(list);
+  return next;
 }
 
 export function removeIntent(id) {
@@ -498,6 +541,9 @@ export async function runAutoBook() {
       if (Date.now() >= start.getTime()) {
         intent.state = 'failed';
         intent.message = 'The slot started before it could be booked.';
+        // Settled, so the series moves on. A morning the app was never
+        // opened in must not be the morning the series quietly ends.
+        spawnNextOccurrence(intent, list);
         changed = true;
         continue;
       }
@@ -514,6 +560,13 @@ export async function runAutoBook() {
           claimed.add(classKey);
           intent.state = 'failed';
           intent.message = `You already have a ${cleanResourceName(intent.resourceName)} booking that day.`;
+          // The same death spawnNextOccurrence's lookahead was written to
+          // prevent, by the other door: a day claimed by a *booking* rather
+          // than by an intent settled this occurrence and spawned nothing,
+          // so a series met the first day you had booked by hand and
+          // silently never ran again. One booking a day still holds — the
+          // series just resumes the day after.
+          spawnNextOccurrence(intent, list);
           changed = true;
           continue;
         }
