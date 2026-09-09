@@ -227,6 +227,13 @@
 .fr-badge.is-booked { background: var(--success-bg); color: var(--success); }
 .fr-badge.is-cancelled { background: var(--bg-elevated-2); color: var(--text-secondary); }
 
+/* A cancelled row still carries its real time and name — it just has to
+   lose next to a live booking at a glance, not on a second read of the
+   badge. Opacity on the whole row (not a recolour) is what a disabled
+   slot already uses elsewhere, so "this isn't active" reads as one
+   consistent visual idea across the app. */
+.fr-row.is-cancelled { opacity: 0.55; }
+
 .fr-cancel-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 /* Cancel confirmation. Three earlier attempts all failed the same way —
@@ -503,6 +510,15 @@
 .fr-sched-name, .fr-sched-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fr-sched-name { margin: 0; font-weight: 600; font-size: 0.875rem; }
 .fr-sched-note { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+/* A pending autobook in My Bookings is a real .fr-row (see
+   buildPendingBookingRow) — same 70px rhythm as an actual booking, not a
+   separate boxed list with its own heading. Dashed, not solid: the same
+   "not real yet" language .fr-slot--later already uses for a watched slot
+   that is a try, not a reservation. Neutral border, not accent — it's a
+   state, not a call to action. */
+.fr-row--pending { background: transparent; border: 1px dashed var(--border); }
+.fr-badge.is-pending { background: transparent; border: 1px dashed var(--border); color: var(--text-secondary); }
 
 /* A switch, for the one place the UI has a real on/off choice (repeat
    this autobook daily). A button with aria-pressed rather than a

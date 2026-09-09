@@ -3,7 +3,8 @@
 // ---------------------------------------------------------------------
 
 import { callAura, resolveUserId } from '../aura.js';
-import { cleanResourceName, formatBookingWhen, parseBookingDateTime } from '../dates.js';
+import { buildPendingBookingRow, loadIntents } from '../autobook.js';
+import { cleanResourceName, formatBookingWhen, isoDateLocal, parseBookingDateTime, sameDay, startOfToday } from '../dates.js';
 import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
 import { renderEmpty, switchTab } from '../shell.js';
@@ -17,37 +18,89 @@ export async function renderMyBookings(token) {
   const bookings = cache.bookings;
   if (token !== ui.activeToken) return;
 
+  const waitingIntents = loadIntents().filter((i) => i.state === 'waiting');
+
   const page = el('div', { class: 'fr-page' });
   page.appendChild(el('h1', { class: 'fr-page-title', text: 'My Bookings' }));
 
-  if (!bookings.length) {
+  if (!bookings.length && !waitingIntents.length) {
     page.appendChild(renderEmpty('bookings', 'No bookings yet', 'Reserve a facility from Book Slot.'));
     ui.contentEl.replaceChildren(page);
     return;
   }
 
   const now = new Date();
-  const withDates = bookings.map((b) => ({ b, start: parseBookingDateTime(b.startDateTime) }));
-  const upcoming = withDates.filter((x) => x.start >= now).sort((a, b) => a.start - b.start);
-  const past = withDates.filter((x) => x.start < now).sort((a, b) => b.start - a.start);
+  const today = startOfToday();
+  const withDates = bookings.map((x) => ({ b: x, start: parseBookingDateTime(x.startDateTime) }));
 
-  function buildSection(title, items, cancellable) {
+  // Sectioned by calendar day, not by instant — a booking from earlier
+  // today still reads as "today", not "past", which is what a student
+  // checking "did I already use my gym slot" actually wants to see.
+  const upcoming = withDates.filter((x) => x.start > today && !sameDay(x.start, today));
+  const todaysBookings = withDates.filter((x) => sameDay(x.start, today));
+  const past = withDates.filter((x) => x.start < today && !sameDay(x.start, today));
+
+  // Within a section still ahead of you, a cancelled slot sitting between
+  // two live ones reads as "is this one still on?" — sinking it below
+  // keeps the section answering "what do I actually have on". Past stays
+  // strictly chronological on purpose: every cancellation ever made would
+  // otherwise pile up at the bottom of a section nobody re-checks anyway.
+  function sortLive(items) {
+    return items.slice().sort((a, b) => {
+      const aCancelled = a.b.status !== 'Booked';
+      const bCancelled = b.b.status !== 'Booked';
+      if (aCancelled !== bCancelled) return aCancelled ? 1 : -1;
+      return a.start - b.start;
+    });
+  }
+
+  upcoming.sort((a, b) => a.start - b.start);
+  todaysBookings.sort((a, b) => a.start - b.start);
+  past.sort((a, b) => b.start - a.start);
+
+  // A watched intent belongs wherever its own date lands, same as a real
+  // booking — booking a full slot for today autobooks into Today, not
+  // Upcoming, and the date string sorts lexically same as ISO dates do.
+  const todayIso = isoDateLocal(today);
+  const todayIntents = waitingIntents.filter((i) => i.date <= todayIso);
+  const upcomingIntents = waitingIntents.filter((i) => i.date > todayIso);
+
+  // Pending rows are real .fr-rows appended after the section's real
+  // bookings — same 70px rhythm, dashed instead of solid, no separate
+  // boxed-off list with its own heading eating extra height.
+  function buildSection(title, items, pendingIntents) {
     const section = el('section', { class: 'fr-day-group' });
     section.appendChild(el('h2', { class: 'fr-group-heading', text: title }));
-    const list = el('div', { class: 'fr-list' });
-    for (const { b } of items) list.appendChild(renderBookingRow(b, cancellable));
-    section.appendChild(list);
+    if (items.length || (pendingIntents && pendingIntents.length)) {
+      const list = el('div', { class: 'fr-list' });
+      for (const { b } of items) {
+        // Cancellable only while the slot itself is still ahead of now —
+        // a same-day booking whose time already passed can't be undone.
+        const cancellable = b.status === 'Booked' && parseBookingDateTime(b.startDateTime) > now;
+        list.appendChild(renderBookingRow(b, cancellable));
+      }
+      for (const intent of pendingIntents || []) {
+        list.appendChild(buildPendingBookingRow(intent, () => switchTab('bookings')));
+      }
+      section.appendChild(list);
+    }
     return section;
   }
 
-  if (upcoming.length) page.appendChild(buildSection('Upcoming', upcoming, true));
-  if (past.length) page.appendChild(buildSection('Past', past, false));
+  if (upcoming.length || upcomingIntents.length) {
+    page.appendChild(buildSection('Upcoming', sortLive(upcoming), upcomingIntents));
+  }
+  if (todaysBookings.length || todayIntents.length) {
+    page.appendChild(buildSection('Today', sortLive(todaysBookings), todayIntents));
+  }
+  if (past.length) page.appendChild(buildSection('Past', past));
 
   ui.contentEl.replaceChildren(page);
 }
 
 function renderBookingRow(booking, cancellable) {
-  const row = el('div', { class: 'fr-row' });
+  const cancelled = booking.status !== 'Booked';
+  const row = el('div', { class: cancelled ? 'fr-row is-cancelled' : 'fr-row' });
   const main = el('div', { class: 'fr-row-main' });
   const name = cleanResourceName(booking.resourceName);
   const when = formatBookingWhen(booking);

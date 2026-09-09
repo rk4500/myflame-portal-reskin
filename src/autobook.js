@@ -329,46 +329,189 @@ function intentSummary(intent) {
   return `${cleanResourceName(intent.resourceName)} · ${day} · ${compactTimeRange(intent.startTime, intent.endTime || intent.startTime)}`;
 }
 
-// The list of what is being watched, shown under the slot grid. Also the
-// only place a scheduled slot can be called off from another tab.
-export function buildScheduledList(onChange) {
-  const waiting = loadIntents().filter((i) => i.state === 'waiting');
+// Same in-row confirm as a real booking's Cancel (see attachCancelConfirm
+// in tabs/bookings.js): the name becomes the question, Yes sits left of
+// No so a double-tap on the old Stop spot can't confirm anything, and
+// only one row across the page asks at a time. Stopping an intent is a
+// synchronous localStorage edit, not a network call, so there's no
+// failure state to hold — Yes always succeeds.
+function buildScheduledRow(intent, onChange) {
+  const opensAt = intentOpensAt(intent);
+  // A daily repeat is one row, not a queue: the next occurrence is not
+  // created until this one has been settled, so the list never grows
+  // into a wall of pending days.
+  const summary = intent.repeat === 'daily' ? `${intentSummary(intent)} · daily` : intentSummary(intent);
+  const noteText = intent.message
+    || (opensAt
+      ? `Opens ${relativeFuture(opensAt.getTime())} — tries while the app is open.${intent.repeat === 'daily' ? ' Repeats until stopped.' : ''}`
+      : '');
+
+  const row = el('div', { class: 'fr-sched-row' });
+  const name = el('p', { class: 'fr-sched-name', text: summary, title: summary });
+  const note = el('p', { class: 'fr-sched-note', text: noteText, title: noteText });
+  const main = el('div', { class: 'fr-sched-main' }, [name, note]);
+  row.appendChild(main);
+
+  const wrap = el('div', { class: 'fr-cancel-wrap' });
+  row.appendChild(wrap);
+
+  const trigger = el('button', {
+    class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Stop', 'aria-expanded': 'false',
+    // Removing the one waiting intent ends the series outright, because
+    // nothing spawns the next until this one resolves.
+    title: intent.repeat === 'daily' ? 'Stops this and the daily repeat' : 'Stops this autobook',
+  });
+  const yesBtn = el('button', { class: 'fr-btn fr-btn--danger fr-btn--sm', type: 'button', text: 'Yes' });
+  const noBtn = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'No' });
+
+  function showIdle() {
+    row.classList.remove('is-confirming');
+    name.textContent = summary;
+    name.title = summary;
+    trigger.setAttribute('aria-expanded', 'false');
+    wrap.replaceChildren(trigger);
+  }
+  row.__frCloseConfirm = showIdle;
+
+  trigger.addEventListener('click', (e) => {
+    for (const other of ui.contentEl.querySelectorAll('.fr-sched-row.is-confirming')) {
+      if (other !== row && other.__frCloseConfirm) other.__frCloseConfirm();
+    }
+    row.classList.add('is-confirming');
+    const asking = `Stop ${summary}?`;
+    name.textContent = asking;
+    name.title = asking;
+    trigger.setAttribute('aria-expanded', 'true');
+    wrap.replaceChildren(yesBtn, noBtn);
+    if (e.detail === 0) noBtn.focus();
+  });
+
+  noBtn.addEventListener('click', () => {
+    showIdle();
+    trigger.focus();
+  });
+
+  row.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && row.classList.contains('is-confirming')) {
+      showIdle();
+      trigger.focus();
+    }
+  });
+
+  yesBtn.addEventListener('click', () => {
+    removeIntent(intent.id);
+    if (onChange) onChange();
+    paintAutoBookBanner();
+  });
+
+  showIdle();
+  return row;
+}
+
+// The My Bookings variant: a real .fr-row, same 70px rhythm as an actual
+// booking. Dashed instead of solid is the same "not real yet" language
+// .fr-slot--later already carries. Title says what this is ("Autobook ·
+// Gym") and meta says when (day · time), same split a real row makes
+// between its title (what) and its pill (status) — the pill here says
+// "Pending" rather than repeating "Autobook", which the title already
+// said. Cancel prefixes onto the title on confirm ("Cancel Autobook ·
+// Gym?"), same as attachCancelConfirm's `Cancel ${name}?`.
+//
+// The "opens in Xh" status is always visible in meta, not behind a hover
+// or a tap — this is a touch app first (Android WebView), nothing to
+// hover, and Book Slot's own grid already draws "Opens in 6h 17m"
+// directly on a dashed slot tile the same way, no interaction needed.
+// The full "tries while the app is open" sentence is dropped: the
+// dashed border + Pending pill already say "not guaranteed" on their
+// own, so the countdown is the only new fact meta has to carry.
+export function buildPendingBookingRow(intent, onChange) {
+  const name = cleanResourceName(intent.resourceName);
+  const when = slotStartDate(intent.date, intent.startTime);
+  const day = when ? shortDayLabel(when) : intent.date;
+  const timeRange = compactTimeRange(intent.startTime, intent.endTime || intent.startTime);
+  const opensAt = intentOpensAt(intent);
+  const statusText = intent.message || (opensAt ? `Opens ${relativeFuture(opensAt.getTime())}` : '');
+  let whenText = `${day} · ${timeRange}`;
+  if (statusText) whenText += ` · ${statusText}`;
+  if (intent.repeat === 'daily') whenText += ' · Daily';
+  const label = `Autobook · ${name}`;
+
+  const row = el('div', { class: 'fr-row fr-row--pending' });
+  const title = el('p', { class: 'fr-row-title', text: label, title: label });
+  const meta = el('p', { class: 'fr-row-meta', text: whenText, title: whenText });
+  const main = el('div', { class: 'fr-row-main' }, [title, meta]);
+  row.appendChild(main);
+
+  const actions = el('div', { class: 'fr-row-actions' });
+  actions.appendChild(el('span', { class: 'fr-badge is-pending', text: 'Pending' }));
+  const wrap = el('div', { class: 'fr-cancel-wrap' });
+  actions.appendChild(wrap);
+  row.appendChild(actions);
+
+  const trigger = el('button', {
+    class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Cancel', 'aria-expanded': 'false',
+    title: intent.repeat === 'daily' ? 'Cancels this and the daily repeat' : 'Cancels this autobook',
+  });
+  const yesBtn = el('button', { class: 'fr-btn fr-btn--danger fr-btn--sm', type: 'button', text: 'Yes' });
+  const noBtn = el('button', { class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'No' });
+
+  function showIdle() {
+    row.classList.remove('is-confirming');
+    title.textContent = label;
+    title.title = label;
+    trigger.setAttribute('aria-expanded', 'false');
+    wrap.replaceChildren(trigger);
+  }
+  row.__frCloseConfirm = showIdle;
+
+  trigger.addEventListener('click', (e) => {
+    for (const other of ui.contentEl.querySelectorAll('.fr-row.is-confirming')) {
+      if (other !== row && other.__frCloseConfirm) other.__frCloseConfirm();
+    }
+    row.classList.add('is-confirming');
+    const asking = `Cancel ${label}?`;
+    title.textContent = asking;
+    title.title = asking;
+    trigger.setAttribute('aria-expanded', 'true');
+    wrap.replaceChildren(yesBtn, noBtn);
+    if (e.detail === 0) noBtn.focus();
+  });
+
+  noBtn.addEventListener('click', () => {
+    showIdle();
+    trigger.focus();
+  });
+
+  row.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && row.classList.contains('is-confirming')) {
+      showIdle();
+      trigger.focus();
+    }
+  });
+
+  yesBtn.addEventListener('click', () => {
+    removeIntent(intent.id);
+    if (onChange) onChange();
+    paintAutoBookBanner();
+  });
+
+  showIdle();
+  return row;
+}
+
+// The list of what is being watched, shown under the slot grid, and under
+// the relevant day section in My Bookings. Also the only place a
+// scheduled slot can be called off from another tab.
+//
+// `intents` lets a caller hand in an already-filtered subset (My Bookings
+// buckets waiting intents by which day they'd land on) instead of always
+// taking every waiting intent in one lump.
+export function buildScheduledList(onChange, intents) {
+  const waiting = intents || loadIntents().filter((i) => i.state === 'waiting');
   const wrap = el('div', { class: 'fr-sched' });
   if (!waiting.length) return wrap;
   wrap.appendChild(el('h3', { class: 'fr-sched-title', text: 'Booking automatically' }));
-  for (const intent of waiting) {
-    const opensAt = intentOpensAt(intent);
-    const row = el('div', { class: 'fr-sched-row' });
-    const main = el('div', { class: 'fr-sched-main' }, [
-      el('p', {
-        class: 'fr-sched-name',
-        // A daily repeat is one row, not a queue: the next occurrence is
-        // not created until this one has been settled, so the list never
-        // grows into a wall of pending days.
-        text: intent.repeat === 'daily' ? `${intentSummary(intent)} · daily` : intentSummary(intent),
-      }),
-      el('p', {
-        class: 'fr-sched-note',
-        text: intent.message
-          || (opensAt
-            ? `Opens ${relativeFuture(opensAt.getTime())} — tries while the app is open.${intent.repeat === 'daily' ? ' Repeats until stopped.' : ''}`
-            : ''),
-      }),
-    ]);
-    const drop = el('button', {
-      class: 'fr-btn fr-btn--ghost fr-btn--sm', type: 'button', text: 'Stop',
-      // Removing the one waiting intent ends the series outright, because
-      // nothing spawns the next until this one resolves.
-      title: intent.repeat === 'daily' ? 'Stops this and the daily repeat' : 'Stops this autobook',
-    });
-    drop.addEventListener('click', () => {
-      removeIntent(intent.id);
-      if (onChange) onChange();
-      paintAutoBookBanner();
-    });
-    row.append(main, drop);
-    wrap.appendChild(row);
-  }
+  for (const intent of waiting) wrap.appendChild(buildScheduledRow(intent, onChange));
   return wrap;
 }
 
