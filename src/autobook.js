@@ -424,7 +424,7 @@ function buildScheduledRow(intent, onChange) {
 // The full "tries while the app is open" sentence is dropped: the
 // dashed border + Pending pill already say "not guaranteed" on their
 // own, so the countdown is the only new fact meta has to carry.
-export function buildPendingBookingRow(intent, onChange) {
+function pendingIntentText(intent) {
   const name = cleanResourceName(intent.resourceName);
   const when = slotStartDate(intent.date, intent.startTime);
   const day = when ? shortDayLabel(when) : intent.date;
@@ -434,7 +434,24 @@ export function buildPendingBookingRow(intent, onChange) {
   let whenText = `${day} · ${timeRange}`;
   if (statusText) whenText += ` · ${statusText}`;
   if (intent.repeat === 'daily') whenText += ' · Daily';
-  const label = `Autobook · ${name}`;
+  return { label: `Autobook · ${name}`, whenText };
+}
+
+// Home's glance version: same title/meta/pill as the My Bookings row below,
+// minus the cancel control — Home never offers actions, only My Bookings
+// does, so a pending intent shown there is read-only.
+export function buildPendingBookingBadge(intent) {
+  const { label, whenText } = pendingIntentText(intent);
+  const row = el('div', { class: 'fr-row fr-row--pending' });
+  const title = el('p', { class: 'fr-row-title', text: label, title: label });
+  const meta = el('p', { class: 'fr-row-meta', text: whenText, title: whenText });
+  row.appendChild(el('div', { class: 'fr-row-main' }, [title, meta]));
+  row.appendChild(el('div', { class: 'fr-row-actions' }, [el('span', { class: 'fr-badge is-pending', text: 'Pending' })]));
+  return row;
+}
+
+export function buildPendingBookingRow(intent, onChange) {
+  const { label, whenText } = pendingIntentText(intent);
 
   const row = el('div', { class: 'fr-row fr-row--pending' });
   const title = el('p', { class: 'fr-row-title', text: label, title: label });

@@ -7,6 +7,7 @@
 // on every fresh visit to the tab (a glance view, not meant to remember
 // where you left off).
 
+import { buildPendingBookingBadge, loadIntents, slotStartDate } from '../autobook.js';
 import { callAura, resolveUserId } from '../aura.js';
 import { addDays, cleanResourceName, dayLabel, formatBookingWhen, formatTime, parseBookingDateTime, sameDay, startOfToday, startOfWeekMonday } from '../dates.js';
 import { el, morphHeight, skel } from '../dom.js';
@@ -116,7 +117,9 @@ function buildHomeSkeleton() {
   const bookings = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
   bookings.appendChild(
     el('div', { class: 'fr-group-heading-row' }, [
-      el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }),
+      // Whether this reads "Today" or "Upcoming" depends on data not in
+      // yet, so the label itself shimmers rather than guessing one.
+      el('h2', { class: 'fr-group-heading', style: 'margin: 0;' }, [skel(8)]),
     ])
   );
   bookings.appendChild(
@@ -199,28 +202,54 @@ function buildHomePage(events, bookings) {
   paintStrip();
   paintClasses();
 
-  // Upcoming bookings — only shown when something is actually upcoming.
+  // One bucket, not two: Today when today has anything still ahead of it,
+  // else a single next-upcoming row as a nudge (My Bookings is where you
+  // browse further — "See all" already covers "there's more"). Cancelled
+  // bookings are dropped outright here, not dimmed — a cancelled slot has
+  // nothing to tell a glance view. A daily autobook watch counts too,
+  // merged in by its own start time rather than tacked on after real
+  // bookings, so whichever is actually sooner is what shows first.
   const now = new Date();
-  const upcomingBookings = bookings
-    .filter((b) => b.status === 'Booked' && parseBookingDateTime(b.startDateTime) >= now)
-    .sort((a, b) => parseBookingDateTime(a.startDateTime) - parseBookingDateTime(b.startDateTime))
-    .slice(0, 5);
+  const today = startOfToday();
+
+  const liveBookings = bookings
+    .filter((b) => b.status === 'Booked' && parseBookingDateTime(b.endDateTime) > now)
+    .map((b) => ({ kind: 'booking', start: parseBookingDateTime(b.startDateTime), b }));
+  const liveIntents = loadIntents()
+    .filter((i) => i.state === 'waiting')
+    .map((i) => ({ kind: 'intent', start: slotStartDate(i.date, i.startTime), i }))
+    // A still-"waiting" intent whose own start already elapsed is stale
+    // (runAutoBook fails it out once that happens, but only while the app
+    // is actually open to run the loop) — not something to show as "next".
+    .filter((x) => x.start && x.start > now);
+
+  const combined = [...liveBookings, ...liveIntents].sort((a, b) => a.start - b.start);
+  const todayItems = combined.filter((x) => sameDay(x.start, today));
+  const isToday = todayItems.length > 0;
+  const displayItems = isToday ? todayItems : combined.slice(0, 1);
+  const hasAnyRow = displayItems.length > 0;
+
   // The section stays whether or not anything is upcoming. It used to be
   // dropped entirely when empty, which left the page looking like it had
   // ended early — and an empty booking list is the one moment where the
   // obvious next move is to make a booking, so it says that and offers it.
   const bookingsSection = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
   const headingRow = el('div', { class: 'fr-group-heading-row' });
-  headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }));
-  if (upcomingBookings.length) {
+  headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: isToday ? 'Today' : 'Upcoming', style: 'margin: 0;' }));
+  if (hasAnyRow) {
     const seeAll = el('button', { class: 'fr-link-btn', type: 'button', text: 'See all' });
     seeAll.addEventListener('click', () => switchTab('bookings'));
     headingRow.appendChild(seeAll);
   }
   bookingsSection.appendChild(headingRow);
-  if (upcomingBookings.length) {
+  if (hasAnyRow) {
     const list = el('div', { class: 'fr-list' });
-    for (const b of upcomingBookings) {
+    for (const item of displayItems) {
+      if (item.kind === 'intent') {
+        list.appendChild(buildPendingBookingBadge(item.i));
+        continue;
+      }
+      const b = item.b;
       list.appendChild(
         el('div', { class: 'fr-row' }, [
           el('div', { class: 'fr-row-main' }, [

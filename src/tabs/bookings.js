@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------
 
 import { callAura, resolveUserId } from '../aura.js';
-import { buildPendingBookingRow, loadIntents } from '../autobook.js';
+import { buildPendingBookingRow, loadIntents, slotStartDate } from '../autobook.js';
 import { cleanResourceName, formatBookingWhen, isoDateLocal, parseBookingDateTime, sameDay, startOfToday } from '../dates.js';
 import { clearPersistedBookings } from '../persist.js';
 import { el } from '../dom.js';
@@ -40,20 +40,6 @@ export async function renderMyBookings(token) {
   const todaysBookings = withDates.filter((x) => sameDay(x.start, today));
   const past = withDates.filter((x) => x.start < today && !sameDay(x.start, today));
 
-  // Within a section still ahead of you, a cancelled slot sitting between
-  // two live ones reads as "is this one still on?" — sinking it below
-  // keeps the section answering "what do I actually have on". Past stays
-  // strictly chronological on purpose: every cancellation ever made would
-  // otherwise pile up at the bottom of a section nobody re-checks anyway.
-  function sortLive(items) {
-    return items.slice().sort((a, b) => {
-      const aCancelled = a.b.status !== 'Booked';
-      const bCancelled = b.b.status !== 'Booked';
-      if (aCancelled !== bCancelled) return aCancelled ? 1 : -1;
-      return a.start - b.start;
-    });
-  }
-
   upcoming.sort((a, b) => a.start - b.start);
   todaysBookings.sort((a, b) => a.start - b.start);
   past.sort((a, b) => b.start - a.start);
@@ -65,33 +51,57 @@ export async function renderMyBookings(token) {
   const todayIntents = waitingIntents.filter((i) => i.date <= todayIso);
   const upcomingIntents = waitingIntents.filter((i) => i.date > todayIso);
 
-  // Pending rows are real .fr-rows appended after the section's real
-  // bookings — same 70px rhythm, dashed instead of solid, no separate
-  // boxed-off list with its own heading eating extra height.
+  const cancellableNow = (b) => b.status === 'Booked' && parseBookingDateTime(b.startDateTime) > now;
+
+  // Pending rows are real .fr-rows, same 70px rhythm as an actual booking,
+  // dashed instead of solid. In a section still ahead of you they sort in
+  // by their own start time alongside the live bookings — an autobook
+  // watch that's sooner than a confirmed booking shows first, same as any
+  // other "what's actually next" question. Cancelled bookings still sink
+  // below all of that: a cancelled slot sitting between two live ones (or
+  // a watch) reads as "is this one still on?", so it sorts last, by its
+  // own time among itself. Past has no intents to merge and stays
+  // strictly chronological, cancellations included inline — sinking them
+  // there would just pile every cancellation ever made at the bottom of a
+  // section nobody re-checks anyway.
   function buildSection(title, items, pendingIntents) {
     const section = el('section', { class: 'fr-day-group' });
     section.appendChild(el('h2', { class: 'fr-group-heading', text: title }));
-    if (items.length || (pendingIntents && pendingIntents.length)) {
+
+    if (pendingIntents === undefined) {
+      if (items.length) {
+        const list = el('div', { class: 'fr-list' });
+        for (const { b } of items) list.appendChild(renderBookingRow(b, cancellableNow(b)));
+        section.appendChild(list);
+      }
+      return section;
+    }
+
+    const live = items.filter((x) => x.b.status === 'Booked');
+    const cancelled = items.filter((x) => x.b.status !== 'Booked').sort((a, b) => a.start - b.start);
+    const merged = [
+      ...live.map((x) => ({ kind: 'booking', start: x.start, b: x.b })),
+      ...pendingIntents.map((i) => ({ kind: 'intent', start: slotStartDate(i.date, i.startTime) || new Date(`${i.date}T00:00:00`), i })),
+    ].sort((a, b) => a.start - b.start);
+
+    if (merged.length || cancelled.length) {
       const list = el('div', { class: 'fr-list' });
-      for (const { b } of items) {
-        // Cancellable only while the slot itself is still ahead of now —
-        // a same-day booking whose time already passed can't be undone.
-        const cancellable = b.status === 'Booked' && parseBookingDateTime(b.startDateTime) > now;
-        list.appendChild(renderBookingRow(b, cancellable));
+      for (const m of merged) {
+        list.appendChild(m.kind === 'intent'
+          ? buildPendingBookingRow(m.i, () => switchTab('bookings'))
+          : renderBookingRow(m.b, cancellableNow(m.b)));
       }
-      for (const intent of pendingIntents || []) {
-        list.appendChild(buildPendingBookingRow(intent, () => switchTab('bookings')));
-      }
+      for (const { b } of cancelled) list.appendChild(renderBookingRow(b, false));
       section.appendChild(list);
     }
     return section;
   }
 
   if (upcoming.length || upcomingIntents.length) {
-    page.appendChild(buildSection('Upcoming', sortLive(upcoming), upcomingIntents));
+    page.appendChild(buildSection('Upcoming', upcoming, upcomingIntents));
   }
   if (todaysBookings.length || todayIntents.length) {
-    page.appendChild(buildSection('Today', sortLive(todaysBookings), todayIntents));
+    page.appendChild(buildSection('Today', todaysBookings, todayIntents));
   }
   if (past.length) page.appendChild(buildSection('Past', past));
 

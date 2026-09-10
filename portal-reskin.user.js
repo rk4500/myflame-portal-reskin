@@ -1017,7 +1017,7 @@
   // The full "tries while the app is open" sentence is dropped: the
   // dashed border + Pending pill already say "not guaranteed" on their
   // own, so the countdown is the only new fact meta has to carry.
-  function buildPendingBookingRow(intent, onChange) {
+  function pendingIntentText(intent) {
     const name = cleanResourceName(intent.resourceName);
     const when = slotStartDate(intent.date, intent.startTime);
     const day = when ? shortDayLabel(when) : intent.date;
@@ -1027,7 +1027,24 @@
     let whenText = `${day} · ${timeRange}`;
     if (statusText) whenText += ` · ${statusText}`;
     if (intent.repeat === 'daily') whenText += ' · Daily';
-    const label = `Autobook · ${name}`;
+    return { label: `Autobook · ${name}`, whenText };
+  }
+
+  // Home's glance version: same title/meta/pill as the My Bookings row below,
+  // minus the cancel control — Home never offers actions, only My Bookings
+  // does, so a pending intent shown there is read-only.
+  function buildPendingBookingBadge(intent) {
+    const { label, whenText } = pendingIntentText(intent);
+    const row = el('div', { class: 'fr-row fr-row--pending' });
+    const title = el('p', { class: 'fr-row-title', text: label, title: label });
+    const meta = el('p', { class: 'fr-row-meta', text: whenText, title: whenText });
+    row.appendChild(el('div', { class: 'fr-row-main' }, [title, meta]));
+    row.appendChild(el('div', { class: 'fr-row-actions' }, [el('span', { class: 'fr-badge is-pending', text: 'Pending' })]));
+    return row;
+  }
+
+  function buildPendingBookingRow(intent, onChange) {
+    const { label, whenText } = pendingIntentText(intent);
 
     const row = el('div', { class: 'fr-row fr-row--pending' });
     const title = el('p', { class: 'fr-row-title', text: label, title: label });
@@ -2804,20 +2821,6 @@
     const todaysBookings = withDates.filter((x) => sameDay(x.start, today));
     const past = withDates.filter((x) => x.start < today && !sameDay(x.start, today));
 
-    // Within a section still ahead of you, a cancelled slot sitting between
-    // two live ones reads as "is this one still on?" — sinking it below
-    // keeps the section answering "what do I actually have on". Past stays
-    // strictly chronological on purpose: every cancellation ever made would
-    // otherwise pile up at the bottom of a section nobody re-checks anyway.
-    function sortLive(items) {
-      return items.slice().sort((a, b) => {
-        const aCancelled = a.b.status !== 'Booked';
-        const bCancelled = b.b.status !== 'Booked';
-        if (aCancelled !== bCancelled) return aCancelled ? 1 : -1;
-        return a.start - b.start;
-      });
-    }
-
     upcoming.sort((a, b) => a.start - b.start);
     todaysBookings.sort((a, b) => a.start - b.start);
     past.sort((a, b) => b.start - a.start);
@@ -2829,33 +2832,57 @@
     const todayIntents = waitingIntents.filter((i) => i.date <= todayIso);
     const upcomingIntents = waitingIntents.filter((i) => i.date > todayIso);
 
-    // Pending rows are real .fr-rows appended after the section's real
-    // bookings — same 70px rhythm, dashed instead of solid, no separate
-    // boxed-off list with its own heading eating extra height.
+    const cancellableNow = (b) => b.status === 'Booked' && parseBookingDateTime(b.startDateTime) > now;
+
+    // Pending rows are real .fr-rows, same 70px rhythm as an actual booking,
+    // dashed instead of solid. In a section still ahead of you they sort in
+    // by their own start time alongside the live bookings — an autobook
+    // watch that's sooner than a confirmed booking shows first, same as any
+    // other "what's actually next" question. Cancelled bookings still sink
+    // below all of that: a cancelled slot sitting between two live ones (or
+    // a watch) reads as "is this one still on?", so it sorts last, by its
+    // own time among itself. Past has no intents to merge and stays
+    // strictly chronological, cancellations included inline — sinking them
+    // there would just pile every cancellation ever made at the bottom of a
+    // section nobody re-checks anyway.
     function buildSection(title, items, pendingIntents) {
       const section = el('section', { class: 'fr-day-group' });
       section.appendChild(el('h2', { class: 'fr-group-heading', text: title }));
-      if (items.length || (pendingIntents && pendingIntents.length)) {
+
+      if (pendingIntents === undefined) {
+        if (items.length) {
+          const list = el('div', { class: 'fr-list' });
+          for (const { b } of items) list.appendChild(renderBookingRow(b, cancellableNow(b)));
+          section.appendChild(list);
+        }
+        return section;
+      }
+
+      const live = items.filter((x) => x.b.status === 'Booked');
+      const cancelled = items.filter((x) => x.b.status !== 'Booked').sort((a, b) => a.start - b.start);
+      const merged = [
+        ...live.map((x) => ({ kind: 'booking', start: x.start, b: x.b })),
+        ...pendingIntents.map((i) => ({ kind: 'intent', start: slotStartDate(i.date, i.startTime) || new Date(`${i.date}T00:00:00`), i })),
+      ].sort((a, b) => a.start - b.start);
+
+      if (merged.length || cancelled.length) {
         const list = el('div', { class: 'fr-list' });
-        for (const { b } of items) {
-          // Cancellable only while the slot itself is still ahead of now —
-          // a same-day booking whose time already passed can't be undone.
-          const cancellable = b.status === 'Booked' && parseBookingDateTime(b.startDateTime) > now;
-          list.appendChild(renderBookingRow(b, cancellable));
+        for (const m of merged) {
+          list.appendChild(m.kind === 'intent'
+            ? buildPendingBookingRow(m.i, () => switchTab('bookings'))
+            : renderBookingRow(m.b, cancellableNow(m.b)));
         }
-        for (const intent of pendingIntents || []) {
-          list.appendChild(buildPendingBookingRow(intent, () => switchTab('bookings')));
-        }
+        for (const { b } of cancelled) list.appendChild(renderBookingRow(b, false));
         section.appendChild(list);
       }
       return section;
     }
 
     if (upcoming.length || upcomingIntents.length) {
-      page.appendChild(buildSection('Upcoming', sortLive(upcoming), upcomingIntents));
+      page.appendChild(buildSection('Upcoming', upcoming, upcomingIntents));
     }
     if (todaysBookings.length || todayIntents.length) {
-      page.appendChild(buildSection('Today', sortLive(todaysBookings), todayIntents));
+      page.appendChild(buildSection('Today', todaysBookings, todayIntents));
     }
     if (past.length) page.appendChild(buildSection('Past', past));
 
@@ -3666,7 +3693,9 @@
     const bookings = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
     bookings.appendChild(
       el('div', { class: 'fr-group-heading-row' }, [
-        el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }),
+        // Whether this reads "Today" or "Upcoming" depends on data not in
+        // yet, so the label itself shimmers rather than guessing one.
+        el('h2', { class: 'fr-group-heading', style: 'margin: 0;' }, [skel(8)]),
       ])
     );
     bookings.appendChild(
@@ -3749,28 +3778,54 @@
     paintStrip();
     paintClasses();
 
-    // Upcoming bookings — only shown when something is actually upcoming.
+    // One bucket, not two: Today when today has anything still ahead of it,
+    // else a single next-upcoming row as a nudge (My Bookings is where you
+    // browse further — "See all" already covers "there's more"). Cancelled
+    // bookings are dropped outright here, not dimmed — a cancelled slot has
+    // nothing to tell a glance view. A daily autobook watch counts too,
+    // merged in by its own start time rather than tacked on after real
+    // bookings, so whichever is actually sooner is what shows first.
     const now = new Date();
-    const upcomingBookings = bookings
-      .filter((b) => b.status === 'Booked' && parseBookingDateTime(b.startDateTime) >= now)
-      .sort((a, b) => parseBookingDateTime(a.startDateTime) - parseBookingDateTime(b.startDateTime))
-      .slice(0, 5);
+    const today = startOfToday();
+
+    const liveBookings = bookings
+      .filter((b) => b.status === 'Booked' && parseBookingDateTime(b.endDateTime) > now)
+      .map((b) => ({ kind: 'booking', start: parseBookingDateTime(b.startDateTime), b }));
+    const liveIntents = loadIntents()
+      .filter((i) => i.state === 'waiting')
+      .map((i) => ({ kind: 'intent', start: slotStartDate(i.date, i.startTime), i }))
+      // A still-"waiting" intent whose own start already elapsed is stale
+      // (runAutoBook fails it out once that happens, but only while the app
+      // is actually open to run the loop) — not something to show as "next".
+      .filter((x) => x.start && x.start > now);
+
+    const combined = [...liveBookings, ...liveIntents].sort((a, b) => a.start - b.start);
+    const todayItems = combined.filter((x) => sameDay(x.start, today));
+    const isToday = todayItems.length > 0;
+    const displayItems = isToday ? todayItems : combined.slice(0, 1);
+    const hasAnyRow = displayItems.length > 0;
+
     // The section stays whether or not anything is upcoming. It used to be
     // dropped entirely when empty, which left the page looking like it had
     // ended early — and an empty booking list is the one moment where the
     // obvious next move is to make a booking, so it says that and offers it.
     const bookingsSection = el('div', { class: 'fr-home-bookings', style: 'margin-top: 32px;' });
     const headingRow = el('div', { class: 'fr-group-heading-row' });
-    headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: 'Upcoming bookings', style: 'margin: 0;' }));
-    if (upcomingBookings.length) {
+    headingRow.appendChild(el('h2', { class: 'fr-group-heading', text: isToday ? 'Today' : 'Upcoming', style: 'margin: 0;' }));
+    if (hasAnyRow) {
       const seeAll = el('button', { class: 'fr-link-btn', type: 'button', text: 'See all' });
       seeAll.addEventListener('click', () => switchTab('bookings'));
       headingRow.appendChild(seeAll);
     }
     bookingsSection.appendChild(headingRow);
-    if (upcomingBookings.length) {
+    if (hasAnyRow) {
       const list = el('div', { class: 'fr-list' });
-      for (const b of upcomingBookings) {
+      for (const item of displayItems) {
+        if (item.kind === 'intent') {
+          list.appendChild(buildPendingBookingBadge(item.i));
+          continue;
+        }
+        const b = item.b;
         list.appendChild(
           el('div', { class: 'fr-row' }, [
             el('div', { class: 'fr-row-main' }, [
