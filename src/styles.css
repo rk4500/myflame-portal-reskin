@@ -125,6 +125,13 @@
    transform itself is inline, set and cleared by the gesture handler
    directly — same convention as morphHeight's own inline height writes. */
 .fr-content.fr-content--dragging { pointer-events: none; }
+/* A neighbour pane built ahead of a commit (see attachSwipeNav's live drag
+   in shell.js) is riding along as a passenger, not something the user has
+   actually navigated to yet — no tap should land on it until it's the
+   real current pane. Same property as --dragging, different element and a
+   different reason, so it stays its own class rather than overloading
+   that one's name. */
+.fr-content.fr-content--frozen { pointer-events: none; }
 .fr-page { max-width: 1320px; width: 100%; animation: fr-fade-in 180ms ease-out; }
 @keyframes fr-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .fr-page-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 24px; }

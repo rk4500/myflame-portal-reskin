@@ -7,6 +7,7 @@ import { paintAutoBookBanner, runAutoBook, startAutoBookLoop } from './autobook.
 import { addDays, sameDay, startOfToday } from './dates.js';
 import { el } from './dom.js';
 import { icon } from './icons.js';
+import { settings } from './settings.js';
 import { ui } from './state.js';
 import { attachHomeLongPress, buildStockToggle } from './toggle.js';
 
@@ -152,7 +153,7 @@ window.addEventListener('resize', () => {
 });
 
 function reduceMotion() {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return !settings.motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 // Swipe left/right on the content pane to step to the next/previous tab,
@@ -163,10 +164,29 @@ function reduceMotion() {
 // mistaken for a swipe, and a touch starting inside a genuinely
 // horizontally-scrollable child — only Calendar's week-view .fr-cal-scroll
 // — is ignored entirely so that element keeps its own native panning.
-const SWIPE_DIRECTION_LOCK = 10;
+const SWIPE_DIRECTION_LOCK = 14; // was 10 — a slow drag's first few px are noisier than a flick's, give the sample a little more room before deciding
 const SWIPE_COMMIT_PX = 72;
 const SWIPE_COMMIT_VELOCITY = 0.5; // px/ms
 const SWIPE_EDGE_RESISTANCE = 0.35; // dampens the drag past the first/last tab instead of just stopping dead
+// The axis lock's dx-vs-dy comparison (below) is an even fight by default,
+// and a slow, deliberate drag's first several px naturally carries more
+// incidental vertical wobble than a fast flick's — a fast flick's start is
+// a clean, committed, nearly-straight line, so dx wins easily; a slow one
+// is closer to a coin flip, and losing it locks the *whole* gesture to 'y'
+// with nothing to show for it (no spring-back either — axis === 'x' gates
+// everything past the lock, preventDefault included), which reads as "the
+// swipe just didn't do anything" — confirmed on a real device recording:
+// every transition that actually landed did so in well under 350ms (a
+// flick), and the gaps in between where a slow drag was attempted show no
+// partial motion at all, not even a vertical rubber-band, which is what
+// losing this coin flip looks like rather than losing a native-scroll
+// race. This pane's own vertical scroll is the fallback gesture here, the
+// horizontal swipe is the primary one, so the lock is biased hard toward
+// it: dx only needs to clear 45% of dy, not beat it outright — horizontal
+// wins any drag within ~66° of level, real vertical scrolling still wins
+// anything steeper. (First cut of this fix used 0.7/~55° and only
+// partially helped — still not proven sufficient on-device.)
+const SWIPE_AXIS_BIAS = 0.45;
 
 // Animates content's transform to its resolution, then always ends the
 // same way regardless of why it was called — cleared inline styles and
@@ -246,12 +266,39 @@ async function crossfadeToTab(nextId, exitBy) {
     return;
   }
 
+  settlePanes(outgoing, incoming, exitBy, token);
+}
+
+// Slides `outgoing` the rest of the way off and `incoming` the rest of
+// the way in, together, from whatever their current inline transforms
+// already are — a continuation, not a fresh start, so a pane already
+// mid-drag doesn't jump before settling. Shared by a full crossfade
+// (incoming starts fully off-screen, never having been seen) and a swipe
+// commit (both panes already mid-drag, however far the finger had
+// gotten).
+//
+// `token` is the commit's own, from activateNavChrome — captured so
+// `finish()`, whenever it actually runs, can tell whether it's still the
+// most recent thing that touched `incoming`. Switching tabs again fast
+// enough (well within this transition's ~220ms) reuses `incoming` as the
+// *next* gesture's own pane — its pointermove writes transform/transition
+// directly, live, same as any drag — and this transition's own cleanup
+// can still fire after that, either from a `transitionend` cut short by
+// the new gesture overwriting `transition` (which cancels it without
+// firing that event) falling through to the `setTimeout` fallback, or
+// from timing out on its own regardless. Without the guard, that stale
+// fallback clears `incoming`'s transform out from under a drag actively
+// in progress — a visible snap to nothing, mid-swipe. `outgoing.remove()`
+// stays unconditional either way: it's a different, older pane than
+// whatever's current now, safe to discard regardless of what's happened
+// to `incoming` since.
+function settlePanes(outgoing, incoming, exitBy, token) {
   const duration = reduceMotion() ? 0 : 220;
-  void incoming.offsetWidth; // flush its starting position before animating
+  void incoming.offsetWidth; // flush its current position before animating
   const transition = duration ? `transform ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)` : 'none';
   outgoing.style.transition = transition;
   incoming.style.transition = transition;
-  outgoing.style.transform = `translateX(${exitBy}px)`; // continues smoothly from wherever a drag left it, or from 0 for a tap
+  outgoing.style.transform = `translateX(${exitBy}px)`;
   incoming.style.transform = 'translateX(0)';
 
   let done = false;
@@ -259,11 +306,43 @@ async function crossfadeToTab(nextId, exitBy) {
     if (done) return;
     done = true;
     outgoing.remove();
-    incoming.style.transition = '';
-    incoming.style.transform = '';
+    if (token === ui.activeToken) {
+      incoming.style.transition = '';
+      incoming.style.transform = '';
+    }
   };
   incoming.addEventListener('transitionend', finish, { once: true });
   setTimeout(finish, duration + 60);
+}
+
+// The swipe-commit twin of crossfadeToTab: `neighborEl` already exists
+// and has been sliding along 1:1 with the finger since the drag started
+// (attachSwipeNav's buildNeighbor, below), so this doesn't build or
+// position a pane — only turns an already-visible preview into the real
+// current one. It re-renders with a *fresh* token regardless of whether
+// the drag-start build already finished: if it did, this is a cheap
+// repaint off the same warm cache the preview just used; if it didn't,
+// this is what actually paints it, and the preview's own late write is
+// safely dropped by its own `token === ui.activeToken` check once this
+// call bumps the token out from under it.
+async function commitToNeighbor(outgoing, neighborEl, nextId, exitBy) {
+  ui.contentEl = neighborEl;
+  const token = activateNavChrome(nextId);
+  neighborEl.classList.remove('fr-content--frozen');
+
+  try {
+    await RENDERERS[nextId](token);
+  } catch (e) {
+    if (token === ui.activeToken) renderErrorPanel(e.message, () => switchTab(nextId));
+    console.error('[flame-reskin]', e);
+  }
+
+  if (token !== ui.activeToken) {
+    neighborEl.remove();
+    return;
+  }
+
+  settlePanes(outgoing, neighborEl, exitBy, token);
 }
 
 // Same directional language a swipe uses (exit toward the side you'd
@@ -284,9 +363,10 @@ export function transitionToTab(nextId) {
 
 // Listens on the stable viewport (never torn down or replaced), but drags
 // whichever pane is actually current — `pane` is captured once per
-// gesture, at pointerdown, since ui.contentEl only ever changes *between*
-// gestures (a commit's crossfadeToTab reassigns it only after this
-// gesture has already ended).
+// gesture, at pointerdown. ui.contentEl can change *during* a gesture too
+// now (briefly, while a neighbour preview's render is in flight — see
+// buildNeighbor), not only between gestures, but always back to `pane`
+// unless that preview goes on to be promoted by a real commit.
 function attachSwipeNav(viewport) {
   let pointerId = null;
   let pane = null;
@@ -298,8 +378,63 @@ function attachSwipeNav(viewport) {
   let axis = null; // 'x' | 'y', decided once the move clears SWIPE_DIRECTION_LOCK
   let dragging = false;
   let translate = 0;
+  let toNext = false; // which neighbour a commit would land on, fixed at axis-lock
+  let neighbor = null; // { el, id, width, promote() } — the live preview of that neighbour, or null past an edge
 
   const tabIndex = () => TABS.findIndex((t) => t.id === currentTab);
+
+  // Renders `id` into a fresh, frozen (`.fr-content--frozen`, pointer-
+  // events:none) pane positioned just off the correct edge and appends
+  // it to the viewport: the live "you're about to see this" preview a
+  // drag reveals as it happens, built the moment direction is known
+  // rather than waiting for a commit — so there's something real to
+  // drag into view instead of a flick-then-fixed-animation to a page
+  // nobody watched arrive.
+  //
+  // Rendered with the *current* token, unchanged: building a preview is
+  // not a navigation — currentTab, activeToken and the nav pill are all
+  // untouched — so it must not race a real render for the same guard
+  // every renderer already does (`token === ui.activeToken`). If the
+  // drag is abandoned, nothing here removes the pane itself (endDrag's
+  // spring-back does that once it decides to discard) — this only
+  // guards where a *late-arriving* write goes: back to the real current
+  // pane if this preview was never promoted, or nowhere (silently
+  // dropped by the renderer's own guard) if a commit has since bumped
+  // the token out from under it.
+  //
+  // Known, accepted gap: reversing direction hard enough mid-drag to
+  // want the *other* neighbour isn't supported — only one preview is
+  // built per gesture, fixed at axis-lock, and a commit attempt past
+  // that point just fails closed (no `neighbor`, so `endDrag` treats it
+  // as a non-commit and springs back). Same reasoning for two rapid,
+  // opposite-direction gestures back to back before the first preview's
+  // render has resolved: rare, and any stray wrong content it could
+  // flash mid-drag is overwritten the moment a real commit's own
+  // authoritative render runs — not worth the cost of real cancellation
+  // for how narrow and self-correcting it is.
+  function buildNeighbor(id, width, offsetPx) {
+    const paneEl = el('main', { class: 'fr-content fr-content--frozen' });
+    paneEl.classList.toggle('fr-content--gyan', id === 'gyan');
+    paneEl.style.transition = 'none';
+    paneEl.style.transform = `translateX(${offsetPx}px)`;
+    ui.viewportEl.appendChild(paneEl);
+
+    const savedContentEl = ui.contentEl;
+    const tok = ui.activeToken;
+    let promoted = false;
+    ui.contentEl = paneEl;
+    (async () => {
+      try {
+        await RENDERERS[id](tok);
+      } catch (err) {
+        console.error('[flame-reskin]', err);
+      } finally {
+        if (!promoted && ui.contentEl === paneEl) ui.contentEl = savedContentEl;
+      }
+    })();
+
+    return { el: paneEl, id, width, promote: () => { promoted = true; } };
+  }
 
   viewport.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
@@ -336,6 +471,7 @@ function attachSwipeNav(viewport) {
     axis = null;
     dragging = false;
     translate = 0;
+    neighbor = null;
   }, { passive: true });
 
   viewport.addEventListener('pointermove', (e) => {
@@ -344,7 +480,7 @@ function attachSwipeNav(viewport) {
     const dy = e.clientY - startY;
     if (axis === null) {
       if (Math.abs(dx) < SWIPE_DIRECTION_LOCK && Math.abs(dy) < SWIPE_DIRECTION_LOCK) return;
-      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      axis = Math.abs(dx) > Math.abs(dy) * SWIPE_AXIS_BIAS ? 'x' : 'y';
       if (axis === 'x') {
         dragging = true;
         pane.classList.add('fr-content--dragging');
@@ -355,6 +491,18 @@ function attachSwipeNav(viewport) {
         // viewport invisible to hit-testing for its *own* subsequent
         // move/up events once the finger drags over some other element.
         try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+
+        // Direction is knowable this early from dx's sign alone — no
+        // need to wait for a commit to know which tab a drag is headed
+        // toward. Same bounds check the edge-resistance logic below
+        // makes independently: no neighbour past the first/last tab.
+        const idx = tabIndex();
+        toNext = dx < 0;
+        const neighborIdx = idx + (toNext ? 1 : -1);
+        if (neighborIdx >= 0 && neighborIdx < TABS.length) {
+          const width = pane.clientWidth;
+          neighbor = buildNeighbor(TABS[neighborIdx].id, width, toNext ? width : -width);
+        }
       }
     }
     if (axis !== 'x') return;
@@ -371,6 +519,17 @@ function attachSwipeNav(viewport) {
     translate = atStart || atEnd ? dx * SWIPE_EDGE_RESISTANCE : dx;
     pane.style.transition = 'none';
     pane.style.transform = `translateX(${translate}px)`;
+    // The neighbour rides along 1:1 with the pane, always exactly one
+    // width away on the side it's coming from — pane going 0 -> -width
+    // (toNext) pairs with the neighbour going +width -> 0, and the
+    // mirror image for the other direction. Constant offset, so this is
+    // the same arithmetic every frame regardless of how far translate
+    // has moved.
+    if (neighbor) {
+      const off = toNext ? neighbor.width : -neighbor.width;
+      neighbor.el.style.transition = 'none';
+      neighbor.el.style.transform = `translateX(${translate + off}px)`;
+    }
   }, { passive: false });
 
   function endDrag(e) {
@@ -380,18 +539,28 @@ function attachSwipeNav(viewport) {
     if (!dragging) return;
     dragging = false;
 
-    const idx = tabIndex();
     const distance = Math.abs(translate);
     const fast = Math.abs(velocity) > SWIPE_COMMIT_VELOCITY;
-    const nextIdx = translate < 0 ? idx + 1 : idx - 1;
-    const commit = (distance > SWIPE_COMMIT_PX || fast) && nextIdx >= 0 && nextIdx < TABS.length;
+    // A neighbour existing at all already encodes the bounds check (none
+    // was built past the first/last tab, or if direction reversed past
+    // what it was built for — see buildNeighbor's known-gap note).
+    const commit = (distance > SWIPE_COMMIT_PX || fast) && neighbor;
 
     if (!commit) {
       animateContentTo(pane, 0, 220);
+      if (neighbor) {
+        const off = toNext ? neighbor.width : -neighbor.width;
+        const discarded = neighbor.el;
+        animateContentTo(discarded, off, 220, () => discarded.remove());
+      }
+      neighbor = null;
       return;
     }
-    const exitBy = translate < 0 ? -pane.clientWidth : pane.clientWidth;
-    crossfadeToTab(TABS[nextIdx].id, exitBy);
+
+    const exitBy = toNext ? -neighbor.width : neighbor.width;
+    neighbor.promote();
+    commitToNeighbor(pane, neighbor.el, neighbor.id, exitBy);
+    neighbor = null;
   }
 
   viewport.addEventListener('pointerup', endDrag);
