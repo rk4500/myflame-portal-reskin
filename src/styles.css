@@ -92,7 +92,20 @@
   cursor: pointer; text-align: left;
   transition: background-color 120ms ease, color 120ms ease;
 }
-.fr-nav-btn:hover { background: var(--bg-elevated); color: var(--text); }
+/* :hover on a touch device applies on tap and has no real way to clear —
+   there's no pointer to "leave" the element, so it sticks until something
+   else happens to repaint over it. On this app that showed up as two
+   nav buttons visibly highlighted at once: whichever was last tapped
+   (stuck :hover) plus the real current tab (.is-active + the pill),
+   coexisting since a swipe changes tabs without tapping the nav bar at
+   all to clear the old one. `hover: hover` is true only for a device
+   with a real pointer that can actually leave an element (a mouse) —
+   false for touch, so every :hover rule in this file is gated behind it
+   rather than fixing this one component and leaving the same bug latent
+   everywhere else hover is used. Desktop (Tampermonkey) is unaffected. */
+@media (hover: hover) {
+  .fr-nav-btn:hover { background: var(--bg-elevated); color: var(--text); }
+}
 .fr-nav-btn.is-active { color: var(--text); }
 .fr-nav-btn.is-active .icon { color: var(--accent); }
 /* Mobile-only long-press-to-switch-to-stock feedback on the Home tab (see
@@ -110,7 +123,9 @@
   color: var(--text-secondary); font: inherit; font-weight: 500; font-size: 0.8125rem;
   padding: 7px 12px; cursor: pointer; transition: border-color 120ms ease, color 120ms ease;
 }
-.fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
+@media (hover: hover) {
+  .fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
+}
 
 /* The stable element: sized by flex like .fr-content used to be, and the
    only thing attachSwipeNav's listeners bind to. One or two .fr-content
@@ -180,7 +195,9 @@
    card that is already true, its time. Full strength, no pointer. */
 .fr-slot--skeleton { cursor: default; }
 .fr-slot--skeleton:disabled { opacity: 1; }
-.fr-slot--skeleton:hover { border-color: var(--border); }
+@media (hover: hover) {
+  .fr-slot--skeleton:hover { border-color: var(--border); }
+}
 @media (prefers-reduced-motion: reduce) {
   .fr-skel { animation: none; background-image: none; }
 }
@@ -293,11 +310,11 @@
 }
 .fr-btn:disabled { opacity: 0.5; cursor: default; }
 .fr-btn--primary { background: var(--accent); color: var(--accent-text); }
-.fr-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+@media (hover: hover) { .fr-btn--primary:hover:not(:disabled) { background: var(--accent-hover); } }
 .fr-btn--secondary { background: var(--bg-elevated-2); color: var(--text); }
-.fr-btn--secondary:hover:not(:disabled) { background: #2b3143; }
+@media (hover: hover) { .fr-btn--secondary:hover:not(:disabled) { background: #2b3143; } }
 .fr-btn--ghost { background: transparent; color: var(--text-secondary); border-color: var(--border); }
-.fr-btn--ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text-secondary); }
+@media (hover: hover) { .fr-btn--ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text-secondary); } }
 .fr-btn--danger { background: var(--danger); color: #241512; }
 .fr-btn--sm { padding: 6px 12px; font-size: 0.8125rem; }
 .fr-btn--icon { padding: 8px; line-height: 0; }
@@ -322,7 +339,7 @@
   border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
   cursor: pointer; text-align: left; transition: border-color 120ms ease;
 }
-.fr-picker-btn:hover { border-color: var(--text-secondary); }
+@media (hover: hover) { .fr-picker-btn:hover { border-color: var(--text-secondary); } }
 .fr-picker.is-open .fr-picker-btn { border-color: var(--accent); }
 .fr-picker-btn-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fr-picker-btn .icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--text-secondary); transition: transform 120ms ease; }
@@ -352,7 +369,7 @@
   cursor: pointer; white-space: nowrap; overflow: hidden;
 }
 .fr-picker-option-label { overflow: hidden; text-overflow: ellipsis; }
-.fr-picker-option:hover { background: var(--bg-elevated); }
+@media (hover: hover) { .fr-picker-option:hover { background: var(--bg-elevated); } }
 .fr-picker-option.is-selected { color: var(--accent); font-weight: 600; }
 
 /* A status the row carries, not a second label: it sits at the far edge,
@@ -375,7 +392,7 @@
   background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text);
   cursor: pointer;
 }
-.fr-daynav-btn:hover:not(:disabled) { background: var(--bg-elevated-2); }
+@media (hover: hover) { .fr-daynav-btn:hover:not(:disabled) { background: var(--bg-elevated-2); } }
 .fr-daynav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* Calendar grid */
@@ -466,7 +483,7 @@
   border: 1px solid transparent; color: var(--text-secondary); font: inherit; cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.fr-datestrip-cell:hover { background: var(--bg-elevated-2); }
+@media (hover: hover) { .fr-datestrip-cell:hover { background: var(--bg-elevated-2); } }
 .fr-datestrip-cell.is-today {
   background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
   border-color: var(--accent); color: var(--text);
@@ -492,7 +509,7 @@
   color: var(--text-secondary); cursor: pointer; transition: background-color 120ms ease, color 120ms ease;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.fr-facility-item:hover { background: var(--bg-elevated); color: var(--text); }
+@media (hover: hover) { .fr-facility-item:hover { background: var(--bg-elevated); color: var(--text); } }
 .fr-facility-item.is-active { background: var(--accent); color: var(--accent-text); }
 .fr-book-field { margin-bottom: 16px; }
 .fr-book-field-label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -505,13 +522,13 @@
   padding: 12px 14px; cursor: pointer; text-align: left; font: inherit; color: var(--text);
   transition: border-color 120ms ease, background-color 120ms ease;
 }
-.fr-slot:hover:not(:disabled) { border-color: var(--text-secondary); }
+@media (hover: hover) { .fr-slot:hover:not(:disabled) { border-color: var(--text-secondary); } }
 .fr-slot.is-selected { border-color: var(--accent); background: var(--bg-elevated-2); }
 .fr-slot:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Looks unavailable, still answers when tapped — a real `disabled` button
    swallows the click, and these have a reason to give. */
 .fr-slot.is-blocked { opacity: 0.4; cursor: pointer; }
-.fr-slot.is-blocked:hover { border-color: var(--border); }
+@media (hover: hover) { .fr-slot.is-blocked:hover { border-color: var(--border); } }
 .fr-slot-time { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; }
 .fr-slot-cap { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 1.125em; }
 .fr-slot-cap:empty::before { content: '\00a0'; }
@@ -525,7 +542,7 @@
    not bookable now — dashed to say "not yet" without inventing a colour. */
 .fr-slot--later { border-style: dashed; color: var(--text-secondary); }
 .fr-slot--later .fr-slot-time { color: var(--text); }
-.fr-slot--later:hover { border-color: var(--text-secondary); }
+@media (hover: hover) { .fr-slot--later:hover { border-color: var(--text-secondary); } }
 .fr-slot--later.is-scheduled { border-style: solid; border-color: var(--accent); }
 .fr-slot--later.is-scheduled .fr-slot-cap { color: var(--accent); }
 .fr-slot.is-confirming-cancel {
@@ -704,9 +721,17 @@
   transition: all 150ms ease; user-select: none;
 }
 .fr-gyan-chip .icon { width: 14px; height: 14px; color: var(--accent); }
-.fr-gyan-chip:hover:not(:disabled), .fr-gyan-chip:active:not(:disabled) {
+/* :active (a real touch press) stays ungated — unlike :hover it has a
+   real "release" on touch, so it can't get stuck the same way. */
+.fr-gyan-chip:active:not(:disabled) {
   background: var(--bg-elevated-2); border-color: var(--accent); color: var(--text);
   transform: translateY(-1px);
+}
+@media (hover: hover) {
+  .fr-gyan-chip:hover:not(:disabled) {
+    background: var(--bg-elevated-2); border-color: var(--accent); color: var(--text);
+    transform: translateY(-1px);
+  }
 }
 /* Dimmed while Gyan is still initialising — the chips submit through the
    composer, so they follow the send button's disabled state exactly. */
@@ -744,7 +769,7 @@ body.flame-reskin-off #flame-reskin-toggle {
   border-radius: 999px; padding: 8px 16px; font: 600 12px ui-sans-serif, -apple-system, sans-serif;
   cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
 }
-#flame-reskin-toggle:hover { background: #232838; }
+@media (hover: hover) { #flame-reskin-toggle:hover { background: #232838; } }
 
 @media (max-width: 760px) {
   .fr-nav {
