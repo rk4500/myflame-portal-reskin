@@ -66,11 +66,64 @@ export function registerRenderers(map) {
 // ui.contentEl. Each render function checks `token === ui.activeToken` right
 // before its final ui.contentEl.replaceChildren(...) call.
 let currentTab = null;
+let navPill = null;
+let navPillPositioned = false;
 
-export async function switchTab(id) {
+// Slides the shared highlight under whichever button is now .is-active.
+// `animate: false` is for the two moments a jump would read as a bug
+// rather than a state change: the very first paint (nothing to slide
+// from) and a breakpoint flip (the bar itself just became a different
+// shape, top bar to bottom bar or back — sliding across that jump reads
+// as a glitch, not a transition).
+function positionNavPill(animate = true) {
+  if (!navPill) return;
+  const activeBtn = navPill.parentElement && navPill.parentElement.querySelector('.fr-nav-btn.is-active');
+  if (!activeBtn) return;
+  if (!animate || !navPillPositioned) {
+    navPill.style.transition = 'none';
+  }
+  navPill.style.transform = `translateX(${activeBtn.offsetLeft}px)`;
+  navPill.style.width = `${activeBtn.offsetWidth}px`;
+  if (!animate || !navPillPositioned) {
+    void navPill.offsetHeight; // flush before handing the transition back
+    navPill.style.transition = '';
+    navPillPositioned = true;
+  }
+}
+
+// Everything about a tab switch that isn't rendering: which nav button is
+// lit, where the pill sits, and clearing a stale focus ring. Split out of
+// switchTab so crossfadeToTab (a real tab-to-tab transition) can do this
+// immediately, in sync with the slide starting, without going through
+// switchTab's own loading-spinner-then-render sequence.
+function activateNavChrome(id) {
   currentTab = id;
   const token = ++ui.activeToken;
   ui.root.querySelectorAll('.fr-nav-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === id));
+  // A tapped button keeps focus — and with it the accent *:focus-visible
+  // ring — long after the pill has moved on. Harmless while every switch
+  // came from a tap on the very button that's now active (focus and the
+  // pill were always the same button), but a swipe changes tabs without
+  // ever touching a nav button at all, so the ring stays stuck on
+  // whichever button was tapped last while the pill correctly slides to
+  // wherever you actually are — two different buttons visibly lit at
+  // once. The pill and the label colour already say which tab is
+  // current; a focus ring left over from a tap two tabs ago doesn't need
+  // to keep saying it too.
+  const focused = document.activeElement;
+  if (focused && focused.classList && focused.classList.contains('fr-nav-btn')) focused.blur();
+  positionNavPill();
+  return token;
+}
+
+// Same-pane refresh: re-renders the tab that's already open (a cancel
+// confirm, a retry, the calendar's breakpoint rebuild) in place, with the
+// existing loading-spinner-then-render sequence. Never used for a
+// tab-to-tab move — that's crossfadeToTab, which needs the pane it's
+// rendering into to still exist in isolation (not yet swapped into
+// ui.contentEl's slot) so it can render before it starts sliding.
+export async function switchTab(id) {
+  const token = activateNavChrome(id);
   if (ui.contentEl) ui.contentEl.classList.toggle('fr-content--gyan', id === 'gyan');
   renderLoading();
   try {
@@ -91,8 +144,259 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (currentTab === 'calendar') switchTab('calendar');
+    // The bar's own shape may have just changed (desktop top bar <->
+    // mobile bottom bar) — reposition without a slide, since there is no
+    // meaningful "from" across a layout that just became a different bar.
+    positionNavPill(false);
   }, 200);
 });
+
+function reduceMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Swipe left/right on the content pane to step to the next/previous tab,
+// touch (and pen) only — a mouse drag is left alone, since desktop already
+// has the top bar one click away and a hijacked mouse-drag would fight
+// text selection. Direction-locked against a 10px move so a vertical
+// scroll on .fr-content (which is itself the scrolling element) is never
+// mistaken for a swipe, and a touch starting inside a genuinely
+// horizontally-scrollable child — only Calendar's week-view .fr-cal-scroll
+// — is ignored entirely so that element keeps its own native panning.
+const SWIPE_DIRECTION_LOCK = 10;
+const SWIPE_COMMIT_PX = 72;
+const SWIPE_COMMIT_VELOCITY = 0.5; // px/ms
+const SWIPE_EDGE_RESISTANCE = 0.35; // dampens the drag past the first/last tab instead of just stopping dead
+
+// Animates content's transform to its resolution, then always ends the
+// same way regardless of why it was called — cleared inline styles and
+// the dragging class off — running `after` only when given one (a spring
+// -back has none; a committed exit does). transitionend is the fast
+// path; the timeout is what actually fires under reduced motion
+// (duration 0 means no transition ever starts) and is the fallback
+// everywhere else, same belt-and-braces as morphHeight.
+function animateContentTo(content, px, duration, after) {
+  content.style.transition = reduceMotion() ? 'none' : `transform ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+  content.style.transform = `translateX(${px}px)`;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    content.classList.remove('fr-content--dragging');
+    content.style.transition = '';
+    content.style.transform = '';
+    if (after) after();
+  };
+  content.addEventListener('transitionend', finish, { once: true });
+  setTimeout(finish, reduceMotion() ? 0 : duration + 60);
+}
+
+// The one motion both a nav tap and a committed swipe end in: the outgoing
+// pane and a freshly rendered incoming pane slide past each other in a
+// single continuous motion — no point where the screen shows neither.
+// Earlier this was exit-then-snap-then-enter on one shared element: the
+// current page slid fully off (200ms), the container was snapped to the
+// opposite edge, *then* the next tab rendered and slid back in (220ms) —
+// two sequential animations with a blank, fully-off-screen pane sitting
+// between them while the render ran. That blank gap and the doubled
+// duration were the same root cause: rendering only started after the old
+// page was already gone.
+//
+// This awaits the render before sliding anything — not every renderer
+// paints synchronously before its first internal `await` the way Home's
+// does (My Bookings, for one, awaits resolveUserId()/getReservations
+// before touching the DOM at all), so starting the slide without waiting
+// showed an empty, backgroundless pane sliding into place and only
+// getting real content afterwards, with no animation on that part. The
+// await is nearly always cheap: userId and the tab's own cache are
+// already warm by the time a second tab is opened (see "Loading, caching
+// and motion" in HANDOFF), so this only actually waits on the network in
+// the genuinely-uncached case, which is exactly when waiting is honest.
+// `await` here also fixed a real crash on its own: renderGyan used to be
+// the one renderer that wasn't `async`, and the previous version of this
+// function called `.catch()` straight on its return value — `undefined`
+// for renderGyan — throwing synchronously and aborting before the
+// slide-in ever ran, which is why Gyan never appeared at all. renderGyan
+// is `async` now too, for the same reason every renderer is: so nothing
+// here has to know or care which ones actually do async work.
+async function crossfadeToTab(nextId, exitBy) {
+  const outgoing = ui.contentEl;
+  const incoming = el('main', { class: 'fr-content' });
+  incoming.style.transition = 'none';
+  incoming.style.transform = `translateX(${-exitBy}px)`;
+  ui.viewportEl.appendChild(incoming);
+  ui.contentEl = incoming;
+
+  const token = activateNavChrome(nextId);
+  incoming.classList.toggle('fr-content--gyan', nextId === 'gyan');
+
+  try {
+    await RENDERERS[nextId](token);
+  } catch (e) {
+    if (token === ui.activeToken) renderErrorPanel(e.message, () => switchTab(nextId));
+    console.error('[flame-reskin]', e);
+  }
+
+  if (token !== ui.activeToken) {
+    // Superseded while this was loading — whatever navigated next already
+    // owns ui.contentEl (and, if it's still mid-flight itself, may still
+    // be holding a reference to this very pane as *its* outgoing; leaving
+    // removal to it is what the token guard is for everywhere else).
+    incoming.remove();
+    return;
+  }
+
+  const duration = reduceMotion() ? 0 : 220;
+  void incoming.offsetWidth; // flush its starting position before animating
+  const transition = duration ? `transform ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)` : 'none';
+  outgoing.style.transition = transition;
+  incoming.style.transition = transition;
+  outgoing.style.transform = `translateX(${exitBy}px)`; // continues smoothly from wherever a drag left it, or from 0 for a tap
+  incoming.style.transform = 'translateX(0)';
+
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    outgoing.remove();
+    incoming.style.transition = '';
+    incoming.style.transform = '';
+  };
+  incoming.addEventListener('transitionend', finish, { once: true });
+  setTimeout(finish, duration + 60);
+}
+
+// Same directional language a swipe uses (exit toward the side you'd
+// have swiped from), driven off tab order instead of a finger: moving to
+// a later tab exits left, an earlier one exits right. Tapping the tab
+// already open is a no-op transition — switchTab still runs (it's what
+// re-fetches), there's just nothing to slide.
+export function transitionToTab(nextId) {
+  const fromIdx = TABS.findIndex((t) => t.id === currentTab);
+  const toIdx = TABS.findIndex((t) => t.id === nextId);
+  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) {
+    switchTab(nextId);
+    return;
+  }
+  const direction = toIdx > fromIdx ? -1 : 1;
+  crossfadeToTab(nextId, direction * ui.viewportEl.clientWidth);
+}
+
+// Listens on the stable viewport (never torn down or replaced), but drags
+// whichever pane is actually current — `pane` is captured once per
+// gesture, at pointerdown, since ui.contentEl only ever changes *between*
+// gestures (a commit's crossfadeToTab reassigns it only after this
+// gesture has already ended).
+function attachSwipeNav(viewport) {
+  let pointerId = null;
+  let pane = null;
+  let startX = 0;
+  let startY = 0;
+  let lastX = 0;
+  let lastT = 0;
+  let velocity = 0;
+  let axis = null; // 'x' | 'y', decided once the move clears SWIPE_DIRECTION_LOCK
+  let dragging = false;
+  let translate = 0;
+
+  const tabIndex = () => TABS.findIndex((t) => t.id === currentTab);
+
+  viewport.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    if (e.target.closest('.fr-cal-scroll, input, textarea')) {
+      // Left at auto: this gesture belongs to a real horizontal scroller
+      // (Calendar's week view) or a text field, and touch-action is a
+      // per-gesture decision the browser locks in from this same event,
+      // so it must not be left at pan-y (below) from a previous swipe.
+      viewport.style.touchAction = '';
+      return;
+    }
+    // Set *before* any move is seen, not after axis-locking on one: the
+    // browser commits to its own default action (here, a plain vertical
+    // scroll, since the pane is itself the scrolling element) within
+    // the first touchmove or two, and a preventDefault() called later —
+    // which is what axis-locking necessarily does — arrives too late to
+    // cancel a scroll the browser already started. That race is what
+    // made a deliberate, slow swipe feel like it was fighting the finger
+    // (a fast flick won it by accident, just by finishing before the
+    // browser's own decision landed) and, worse, could leave the pane
+    // mid-overscroll when a vertical-looking drag got preventDefault'd
+    // out from under it partway — which is what was pushing the page
+    // title up above the frame. pan-y tells the browser up front that
+    // horizontal panning here is never its call, so real vertical
+    // scrolling still runs natively (untouched, no JS involvement) while
+    // horizontal is ours alone from the first pixel, no race either way.
+    viewport.style.touchAction = 'pan-y';
+    pointerId = e.pointerId;
+    pane = ui.contentEl;
+    startX = lastX = e.clientX;
+    startY = e.clientY;
+    lastT = performance.now();
+    velocity = 0;
+    axis = null;
+    dragging = false;
+    translate = 0;
+  }, { passive: true });
+
+  viewport.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== pointerId) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (axis === null) {
+      if (Math.abs(dx) < SWIPE_DIRECTION_LOCK && Math.abs(dy) < SWIPE_DIRECTION_LOCK) return;
+      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (axis === 'x') {
+        dragging = true;
+        pane.classList.add('fr-content--dragging');
+        // Pins every further event for this pointer to `viewport` itself,
+        // regardless of hit-testing — without it, the pointer-events:none
+        // that .fr-content--dragging applies to the pane (to stop a row
+        // underneath from taking a stray tap) would also make the
+        // viewport invisible to hit-testing for its *own* subsequent
+        // move/up events once the finger drags over some other element.
+        try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+    if (axis !== 'x') return;
+    e.preventDefault();
+    const now = performance.now();
+    const dt = now - lastT || 1;
+    velocity = (e.clientX - lastX) / dt;
+    lastX = e.clientX;
+    lastT = now;
+
+    const idx = tabIndex();
+    const atStart = idx <= 0 && dx > 0;
+    const atEnd = idx >= TABS.length - 1 && dx < 0;
+    translate = atStart || atEnd ? dx * SWIPE_EDGE_RESISTANCE : dx;
+    pane.style.transition = 'none';
+    pane.style.transform = `translateX(${translate}px)`;
+  }, { passive: false });
+
+  function endDrag(e) {
+    if (e.pointerId !== pointerId) return;
+    pointerId = null;
+    viewport.style.touchAction = '';
+    if (!dragging) return;
+    dragging = false;
+
+    const idx = tabIndex();
+    const distance = Math.abs(translate);
+    const fast = Math.abs(velocity) > SWIPE_COMMIT_VELOCITY;
+    const nextIdx = translate < 0 ? idx + 1 : idx - 1;
+    const commit = (distance > SWIPE_COMMIT_PX || fast) && nextIdx >= 0 && nextIdx < TABS.length;
+
+    if (!commit) {
+      animateContentTo(pane, 0, 220);
+      return;
+    }
+    const exitBy = translate < 0 ? -pane.clientWidth : pane.clientWidth;
+    crossfadeToTab(TABS[nextIdx].id, exitBy);
+  }
+
+  viewport.addEventListener('pointerup', endDrag);
+  viewport.addEventListener('pointercancel', endDrag);
+}
 
 export function buildShell() {
   ui.root = el('div', { id: 'flame-reskin-root' });
@@ -109,11 +413,14 @@ export function buildShell() {
     el('span', { class: 'fr-brand-name', text: 'FLAME' }),
   ]);
   const navList = el('div', { class: 'fr-nav-list' });
+  // Appended before any button so it paints behind them (see .fr-nav-pill).
+  navPill = el('div', { class: 'fr-nav-pill', 'aria-hidden': 'true' });
+  navList.appendChild(navPill);
   for (const tab of TABS) {
     const btn = el('button', { class: 'fr-nav-btn', type: 'button', 'data-tab': tab.id });
     btn.appendChild(icon(tab.icon));
     btn.appendChild(el('span', { class: 'fr-nav-label', text: tab.label }));
-    btn.addEventListener('click', () => switchTab(tab.id));
+    btn.addEventListener('click', () => transitionToTab(tab.id));
     // Mobile-only escape hatch: the bottom tab bar has no spare room for
     // a 6th icon, and every attempt at a floating/fixed toggle control so
     // far has ended up sitting on top of some tab's own content (a pill
@@ -131,12 +438,20 @@ export function buildShell() {
   const desktopToggle = buildStockToggle('fr-nav-toggle');
   nav.append(brand, navList, desktopToggle);
 
+  // viewportEl is the stable, never-replaced element: fixed in the flex
+  // layout, overflow-x hidden, and the sole thing swipe listeners bind to.
+  // ui.contentEl is the pane inside it that tab renderers actually touch —
+  // stable across a same-tab refresh, but reassigned to a fresh pane by
+  // crossfadeToTab for every tab-to-tab move (see there for why).
+  ui.viewportEl = el('div', { class: 'fr-content-viewport' });
   ui.contentEl = el('main', { class: 'fr-content' });
+  ui.viewportEl.appendChild(ui.contentEl);
   // Outside ui.contentEl on purpose: every tab render calls
   // ui.contentEl.replaceChildren(), which would take the banner with it.
   ui.bannerHost = el('div', { class: 'fr-banner-host' });
+  attachSwipeNav(ui.viewportEl);
 
-  ui.root.append(nav, ui.bannerHost, ui.contentEl);
+  ui.root.append(nav, ui.bannerHost, ui.viewportEl);
   document.body.appendChild(ui.root);
   // Preview/dev only: let the harness pick which tab to boot straight
   // into, instead of racing a separate switchTab() call against this one

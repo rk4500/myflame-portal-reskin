@@ -65,8 +65,26 @@
 .fr-brand { display: flex; align-items: center; gap: 8px; padding-right: 20px; margin-right: 4px; border-right: 1px solid var(--border); }
 .fr-brand-mark { color: var(--accent); width: 22px; height: 22px; }
 .fr-brand-name { font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
-.fr-nav-list { display: flex; align-items: center; gap: 4px; }
+.fr-nav-list { display: flex; align-items: center; gap: 4px; position: relative; }
+/* One shared highlight that slides to the active tab instead of each
+   button owning its own background — the same element on desktop's top
+   bar and mobile's bottom bar, since both share this markup. Inserted
+   before the buttons in DOM order so it paints behind them without a
+   z-index: an absolutely positioned box would otherwise sit above static
+   siblings regardless of source order, which is why the buttons also
+   need `position: relative` below (same auto stacking level, so DOM
+   order decides, exactly what we want). positionNavPill() in shell.js
+   drives its transform/width from the active button's own geometry. */
+.fr-nav-pill {
+  position: absolute; top: 0; left: 0; height: 100%; width: 0;
+  background: var(--bg-elevated-2); border-radius: 8px;
+  transform: translateX(0);
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), width 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .fr-nav-pill { transition: none; } }
 .fr-nav-btn {
+  position: relative;
   display: flex; align-items: center; gap: 8px;
   padding: 8px 12px; border-radius: 8px;
   background: transparent; border: none;
@@ -75,7 +93,7 @@
   transition: background-color 120ms ease, color 120ms ease;
 }
 .fr-nav-btn:hover { background: var(--bg-elevated); color: var(--text); }
-.fr-nav-btn.is-active { background: var(--bg-elevated-2); color: var(--text); }
+.fr-nav-btn.is-active { color: var(--text); }
 .fr-nav-btn.is-active .icon { color: var(--accent); }
 /* Mobile-only long-press-to-switch-to-stock feedback on the Home tab (see
    attachHomeLongPress()) — a slow fill exactly matching the hold duration,
@@ -94,7 +112,19 @@
 }
 .fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
 
-.fr-content { flex: 1; overflow-y: auto; padding: 40px 48px 80px; display: flex; justify-content: center; align-items: flex-start; }
+/* The stable element: sized by flex like .fr-content used to be, and the
+   only thing attachSwipeNav's listeners bind to. One or two .fr-content
+   panes live inside it, absolutely stacked, so a tab-to-tab transition can
+   have the outgoing and incoming pane on screen at once (sliding past each
+   other) instead of a single pane being torn down and rebuilt mid-gesture. */
+.fr-content-viewport { flex: 1; position: relative; overflow: hidden; }
+.fr-content { position: absolute; inset: 0; overflow-y: auto; padding: 40px 48px 80px; display: flex; justify-content: center; align-items: flex-start; }
+/* Swipe-to-switch-tabs (see attachSwipeNav in shell.js): the active pane
+   translates with the finger, so pointer events are switched off mid-drag
+   to stop a moving row's tap/click from firing under the finger. The
+   transform itself is inline, set and cleared by the gesture handler
+   directly — same convention as morphHeight's own inline height writes. */
+.fr-content.fr-content--dragging { pointer-events: none; }
 .fr-page { max-width: 1320px; width: 100%; animation: fr-fade-in 180ms ease-out; }
 @keyframes fr-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .fr-page-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 24px; }

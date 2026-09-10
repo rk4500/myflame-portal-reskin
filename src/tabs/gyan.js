@@ -214,7 +214,7 @@ function parseGyanBold(text) {
   return html;
 }
 
-export function renderGyan(token) {
+export async function renderGyan(token) {
   if (token !== ui.activeToken) return;
 
   const page = el('div', { class: 'fr-page fr-gyan-page' });

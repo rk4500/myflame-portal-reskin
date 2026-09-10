@@ -13,7 +13,8 @@
 // The shell's live DOM, built once by buildShell().
 export const ui = {
   root: null,          // #flame-reskin-root
-  contentEl: null,     // .fr-content — replaced wholesale by every tab render
+  viewportEl: null,    // .fr-content-viewport — stable; hosts one or two .fr-content panes during a tab transition
+  contentEl: null,     // .fr-content — the *current* pane; every tab render replaces it wholesale, and a tab-to-tab transition reassigns this pointer to a freshly rendered pane before sliding it in
   bannerHost: null,    // sits outside contentEl so a tab render can't take it
   toggleBtn: null,     // #flame-reskin-toggle, outside root so it survives "off"
   // Bumped by every switchTab(); a render compares its own token against
