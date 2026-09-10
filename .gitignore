@@ -13,6 +13,7 @@
 !.patch-tools/hook.src.js
 !.patch-tools/gadget-config.json
 !.patch-tools/probe.js
+!.patch-tools/fast-rebuild.sh
 # hook.js and hook.compiled.js are deliberately NOT tracked: 90% of hook.js
 # is a pasted copy of portal-reskin.user.js, so every userscript edit would
 # show up a second time as a near-identical diff in the same commit.

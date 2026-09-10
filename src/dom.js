@@ -52,3 +52,30 @@ export function morphHeight(node, fromHeight, duration = 280) {
   node.addEventListener('transitionend', clear, { once: true });
   setTimeout(clear, duration + 120);
 }
+
+// A labelled on/off switch. Returns the row plus a `checked` getter, the
+// same minimal surface buildPicker exposes — callers only ever ask it one
+// question. Lives here rather than in shell.js so toggle.js (the
+// long-press menu) can use it too without shell.js and toggle.js
+// importing each other — shell.js already imports from toggle.js, and
+// this app has one dependency-cycle war story already (see HANDOFF).
+export function buildSwitch({ label, hint, checked = false, onChange }) {
+  const row = el('div', { class: 'fr-switch-row' });
+  const text = el('div', {}, [el('div', { class: 'fr-switch-label', text: label })]);
+  if (hint) text.appendChild(el('p', { class: 'fr-switch-hint', text: hint }));
+  const btn = el('button', {
+    class: 'fr-switch', type: 'button',
+    role: 'switch', 'aria-checked': String(checked), 'aria-pressed': String(checked),
+    'aria-label': label,
+  });
+  btn.appendChild(el('span', { class: 'fr-switch-knob' }));
+  let on = checked;
+  btn.addEventListener('click', () => {
+    on = !on;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.setAttribute('aria-checked', String(on));
+    if (onChange) onChange(on);
+  });
+  row.append(text, btn);
+  return { el: row, get checked() { return on; } };
+}

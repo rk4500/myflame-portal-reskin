@@ -91,6 +91,12 @@
   color: var(--text-secondary); font: inherit; font-weight: 500; font-size: 0.875rem;
   cursor: pointer; text-align: left;
   transition: background-color 120ms ease, color 120ms ease;
+  /* A held touch on Home (see attachHomeLongPress) could win the OS's own
+     text-selection gesture instead — same hold duration, competing
+     interpretations of the same press. Nav labels are never meant to be
+     copy-selected anyway, on any button here, so this just removes the
+     ambiguity rather than racing it. */
+  user-select: none; -webkit-user-select: none;
 }
 /* :hover on a touch device applies on tap and has no real way to clear —
    there's no pointer to "leave" the element, so it sticks until something
@@ -126,6 +132,30 @@
 @media (hover: hover) {
   .fr-nav-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
 }
+
+/* Long-press menu (mobile Home tab — attachHomeLongPress/openMenu in
+   toggle.js): fixed-positioned via the trigger's own getBoundingClientRect
+   at open time rather than a CSS anchor, since it can't be a DOM child of
+   the nav button itself. Same surface language as .fr-picker-panel — an
+   elevated, bordered, shadowed popover — reused rather than invented,
+   just anchored upward from a fixed point instead of relative-positioned
+   below a form field. Entrance is a small scale-from-the-corner-it-came-
+   from, not a slide: the corner nearest the button is the transform
+   origin, so it reads as growing out of the tap rather than arriving
+   from a direction. */
+.fr-navmenu-panel {
+  position: fixed; z-index: 30; min-width: 180px;
+  background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+  padding: 4px;
+  transform-origin: left bottom;
+  transform: scale(0.92); opacity: 0; pointer-events: none;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 140ms ease-out;
+}
+.fr-navmenu-panel.is-open { transform: scale(1); opacity: 1; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .fr-navmenu-panel { transition: none; } }
+.fr-navmenu-panel .fr-navmenu-setting { padding: 10px 10px 6px; }
+.fr-navmenu-panel .fr-switch-hint { max-width: 220px; }
 
 /* The stable element: sized by flex like .fr-content used to be, and the
    only thing attachSwipeNav's listeners bind to. One or two .fr-content
@@ -582,6 +612,11 @@
 .fr-switch-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
+/* Lets the text side actually wrap in a narrow container (the long-press
+   menu's settings view) instead of a flex item's default min-width:auto
+   holding it to its unwrapped intrinsic width. Inert everywhere else
+   this is used (Book Slot's short, hint-less "Daily" row). */
+.fr-switch-row > div:first-child { min-width: 0; }
 .fr-switch-label { font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .fr-switch-hint { margin: 2px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
 .fr-switch {

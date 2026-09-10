@@ -6,8 +6,8 @@ import { callAura, resolveUserId } from '../aura.js';
 import { BOOKING_WINDOW_MS, buildScheduledList, conflictingIntent, existingBookingFor, futureDailyIntents, knownSlotTimes, loadIntents, parseClockMinutes, relativeFuture, rememberSlotTimes, removeIntent, scheduleIntent, showNotice, slotStartDate, slotTimeKey, startDailySeries } from '../autobook.js';
 import { addDays, cleanResourceName, compactTimeRange, dayLabel, formatBookingWhen, isoDateLocal, sameDay, shortDayLabel, startOfToday } from '../dates.js';
 import { clearPersistedBookings, readPersistedResources, sameData, writePersistedResources } from '../persist.js';
-import { el, skel } from '../dom.js';
-import { buildDayNav, buildPicker, buildSwitch, renderEmpty } from '../shell.js';
+import { buildSwitch, el, skel } from '../dom.js';
+import { buildDayNav, buildPicker, renderEmpty } from '../shell.js';
 import { cache, ui } from '../state.js';
 
 const bookState = { facilities: null, categoryIdx: 0, resourceId: null, date: startOfToday() };
