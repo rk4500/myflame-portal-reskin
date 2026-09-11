@@ -6,8 +6,9 @@ This file is organised by subject, not by date — dates are kept on individual 
 
 ## Current state
 
-- `master` ships everything described here. `v1.1.0` carries the swipe-nav rework in full: the dual-pane crossfade, the live 1:1 drag preview, the touch-`:hover` fix, and the long-press settings menu — see the Shell section for all of it.
-- The APK on the phone is `v1.1.0`, live-verified there this session (nav gestures, the settings menu, the touch-`:hover` fix). `v1.0.2`/`v1.0.3` were never confirmed on-device (built and released with no device attached) — `v1.1.0` is the first build since `v1.0.1` actually installed and used.
+- `master` ships everything described here, through `v1.2.0` — real native background autobooking (`AutobookReceiver`, a self-rescheduling `AlarmManager` alarm with no WebView dependency), merged in from `native-autobook`. See its own section under Autobooking for the whole story; six commits, each independently live-verified on a real device across the session that built it.
+- `v1.1.0` carries the swipe-nav rework in full: the dual-pane crossfade, the live 1:1 drag preview, the touch-`:hover` fix, and the long-press settings menu — see the Shell section for all of it.
+- The APK on the phone is content-identical to `v1.2.0` (built via `native-test-build.sh` against `decompiled-native-test`, not yet re-cut through the full `objection patchapk` release pipeline from a clean `flame-merged.apk` — same bits, different build path, worth knowing if the two ever need to be reconciled). `v1.0.2`/`v1.0.3` were never confirmed on-device (built and released with no device attached).
 - Live-verified: the whole Android injection path, the reskin rendering, Gyan's thread creation, booking and cancellation, and (this release) the swipe/nav rework.
 - Not live-verified: the autobooking 24h model (see its section), and the login page, which the script deliberately never touches.
 - **Slow, deliberate swipes are still unreliable, genuinely unresolved** — see "Swipe: slow drags" in Shell. Fast flicks and nav taps are unaffected; `settings.motion` off (via the new long-press → Settings menu) reverts tab switching to no sliding at all if the swipe UX isn't wanted regardless.
@@ -545,7 +546,9 @@ Checked and clean, so they need no second look:
 
 | Tag | Notes |
 |---|---|
-| `v1.0.3` | Current. A daily autobook can be started from an ordinary booking — the `Daily` toggle is in the manual confirm panel too, so "every day" no longer has to be said from a future day. Two settle paths that killed a running series silently now spawn the next occurrence. Carries the pinned resource collator held back from v1.0.2. |
+| `v1.2.0` | Current. Real native background autobooking — watches actually book while the app is closed, via a self-rescheduling `AlarmManager` alarm with no WebView dependency, not just while the app happens to be open. Survives the process being killed and a real device reboot. Exponential backoff (down from ~720 calls/day to ~80-90). Event-driven bridging (a `document.title` signal, not just page-load polling). A dead session suspends the chain and notifies rather than retrying forever silently. Formatted notifications for every lifecycle moment, deep-linking to My Bookings. Six commits, each independently verified on a real device. |
+| `v1.1.0` | The swipe-nav rework in full: dual-pane crossfade for tab transitions, the live 1:1 drag-follow preview, the touch-`:hover` stuck-highlight fix, and the long-press → settings menu (with the `settings.motion` toggle). |
+| `v1.0.3` | A daily autobook can be started from an ordinary booking — the `Daily` toggle is in the manual confirm panel too, so "every day" no longer has to be said from a future day. Two settle paths that killed a running series silently now spawn the next occurrence. Carries the pinned resource collator held back from v1.0.2. |
 | `v1.0.2` | Book Slot no longer draws every slot twice on phones whose locale formats times differently from the portal — slot times are compared on the minute now, not on the text. |
 | `v1.0.1` | Gyan suggestion chips no longer fire a turn the composer is refusing, and a failed turn no longer leaves the tab dead. Book Slot answers a spent operating window locally instead of spinning into a bare empty state, and defaults to a window that is still live. |
 | `v1.0.0` | Skeleton loaders, the repaint drop, past-slot prediction, the one-row empty state. First non-dated tag; numbering moves forward from here. |
