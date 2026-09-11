@@ -84,6 +84,10 @@ public class AutobookReceiver extends BroadcastReceiver {
   private static final long MAX_RETRY_MS = 60L * 60 * 1000;
   private static final long LATE_BURST_MS = 15L * 60 * 1000;
   private static final int SERIES_LOOKAHEAD_DAYS = 7;
+  // Consecutive plain-exception failures on the same intent before
+  // treating it as session-dead rather than just retrying -- see the
+  // catch (Exception e) block in runOnce() for why this exists.
+  private static final int FAIL_THRESHOLD = 3;
 
   private static final int REQUEST_CODE = 1002;
 
@@ -94,7 +98,7 @@ public class AutobookReceiver extends BroadcastReceiver {
       // only thing that re-arms it afterward. pending_intents itself
       // survives fine (real SharedPreferences, not tied to the alarm), so
       // this is pure reuse: scheduleNextWake() already no-ops correctly if
-      // token_dead is set or nothing's waiting, same as any other call.
+      // session_dead is set or nothing's waiting, same as any other call.
       scheduleNextWake(context.getApplicationContext());
       return;
     }
@@ -103,7 +107,7 @@ public class AutobookReceiver extends BroadcastReceiver {
     Context appContext = context.getApplicationContext();
     SharedPreferences prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
-    if (prefs.getBoolean("token_dead", false)) {
+    if (prefs.getBoolean("session_dead", false)) {
       // Suspended: stop retrying until the app is reopened and re-bridges a
       // fresh token (hook.src.js clears this flag right after that happens).
       return;
@@ -171,7 +175,7 @@ public class AutobookReceiver extends BroadcastReceiver {
     Set<String> claimed = new HashSet<>();
     List<JSONObject> settled = new ArrayList<>();
     boolean changed = false;
-    boolean tokenDead = false;
+    boolean sessionDead = false;
     long now = System.currentTimeMillis();
 
     for (int i = 0; i < originalLen; i++) {
@@ -213,6 +217,9 @@ public class AutobookReceiver extends BroadcastReceiver {
 
       try {
         JSONArray reservations = getReservationsNative(userId, auraContext, auraToken, cookie);
+        // A real round-trip just succeeded -- whatever session/network
+        // trouble this intent was accumulating is clearly over.
+        intentObj.put("nativeFailCount", 0);
         if (alreadyBookedThatDay(reservations, resourceName, date)) {
           claimed.add(classKey);
           intentObj.put("state", "failed");
@@ -260,11 +267,29 @@ public class AutobookReceiver extends BroadcastReceiver {
       } catch (AuraInvalidTokenException tokenEx) {
         // No WebView here, no way to refresh a dead token -- stop
         // outright. Whatever settled earlier in this same pass is kept.
-        tokenDead = true;
+        sessionDead = true;
         break;
       } catch (Exception e) {
+        // Not just a dead Aura token -- a session cookie can also expire
+        // server-side (a login redirect / non-JSON page back instead of
+        // the expected response), or the network can genuinely be down
+        // for a long stretch. Neither throws AuraInvalidTokenException,
+        // so without this an intent hit by either would retry forever,
+        // silently, with no way to ever suspend or tell anyone. A run of
+        // FAIL_THRESHOLD consecutive real exceptions on the *same* intent
+        // (a clean "Full"/"not listed" response isn't one of these --
+        // that's a successful round-trip with a disappointing answer, not
+        // a failure) is treated exactly like a dead token: same suspend,
+        // same "Autobook paused" notification, already generic enough
+        // that it never claimed to be token-specific in the first place.
+        int failCount = intentObj.optInt("nativeFailCount", 0) + 1;
+        intentObj.put("nativeFailCount", failCount);
         intentObj.put("message", "Attempt failed: " + e.getMessage());
         changed = true; // stays waiting
+        if (failCount >= FAIL_THRESHOLD) {
+          sessionDead = true;
+          break;
+        }
       }
     }
 
@@ -288,13 +313,13 @@ public class AutobookReceiver extends BroadcastReceiver {
 
     if (!settled.isEmpty()) notifySettled(appContext, settled);
 
-    if (tokenDead) {
+    if (sessionDead) {
       int stillWaiting = 0;
       for (int i = 0; i < list.length(); i++) {
         if ("waiting".equals(list.optJSONObject(i).optString("state"))) stillWaiting++;
       }
-      notifyTokenDead(appContext, stillWaiting);
-      prefs.edit().putBoolean("token_dead", true).apply();
+      notifyAutobookPaused(appContext, stillWaiting);
+      prefs.edit().putBoolean("session_dead", true).apply();
       cancelAlarm(appContext);
     } else {
       scheduleNextWake(appContext);
@@ -323,7 +348,7 @@ public class AutobookReceiver extends BroadcastReceiver {
 
   static void scheduleNextWake(Context appContext) {
     SharedPreferences prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    if (prefs.getBoolean("token_dead", false)) return; // stays suspended
+    if (prefs.getBoolean("session_dead", false)) return; // stays suspended
     JSONArray list;
     try {
       list = new JSONArray(prefs.getString("pending_intents", "[]"));
@@ -769,16 +794,21 @@ public class AutobookReceiver extends BroadcastReceiver {
     nm.notify(NOTIF_ID, builder.build());
   }
 
-  // Token failure isn't a per-intent settle -- it suspends the whole chain
-  // (see runOnce()) until the app is reopened, and unlike a real
-  // done/failed outcome that was previously silent: nothing told you
-  // autobooking had stopped at all. One notification per suspension (this
-  // only runs the moment tokenDead actually flips true; the alarm is
-  // cancelled right after, so there's nothing to re-fire this from until a
-  // fresh app open re-arms it).
+  // Covers two triggers now, both treated identically: a dead Aura token
+  // (AuraInvalidTokenException) and FAIL_THRESHOLD consecutive plain
+  // exceptions on the same intent (a dead session cookie, a login
+  // redirect instead of JSON, or the network genuinely being down for a
+  // long stretch -- none of which throw AuraInvalidTokenException, so
+  // without the fail-count check they'd retry forever, silently). Neither
+  // is a per-intent settle -- both suspend the whole chain (see runOnce())
+  // until the app is reopened, and previously only the token case ever
+  // told anyone autobooking had stopped at all. One notification per
+  // suspension (this only runs the moment sessionDead actually flips
+  // true; the alarm is cancelled right after, so there's nothing to
+  // re-fire this from until a fresh app open re-arms it).
   private static final int TOKEN_DEAD_NOTIF_ID = 1004;
 
-  private static void notifyTokenDead(Context context, int stillWaiting) {
+  private static void notifyAutobookPaused(Context context, int stillWaiting) {
     ensureChannel(context);
     String body = stillWaiting == 1
         ? "Couldn't reach the portal — 1 watch is paused. Open the app to resume it."

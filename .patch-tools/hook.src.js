@@ -474,14 +474,15 @@ try {
   // Calls AutobookReceiver.scheduleNextWake() (the real scheduling
   // computation lives in Java so it doesn't have to be duplicated in JS
   // over Frida) after a fresh bridge -- a successful page load always means
-  // a fresh token just landed, so this is also where the token-dead suspend
-  // flag (set by the receiver itself on an INVALID_TOKEN failure) gets
-  // cleared and the alarm chain resumes.
+  // a fresh token *and* cookie just landed, so this is also where the
+  // session-dead suspend flag (set by the receiver itself on a dead token
+  // or repeated session-shaped failures -- see FAIL_THRESHOLD in
+  // AutobookReceiver.java) gets cleared and the alarm chain resumes.
   function scheduleAutobookAlarm(view) {
     try {
       var appCtx = view.getContext().getApplicationContext();
       var prefs = appCtx.getSharedPreferences('flame_autobook', 0);
-      prefs.edit().putBoolean('token_dead', false).apply();
+      prefs.edit().putBoolean('session_dead', false).apply();
       var AutobookReceiver = Java.use('com.flame.autobook.AutobookReceiver');
       AutobookReceiver.scheduleNextWake(appCtx);
       log(TAG + ' autobook alarm (re)armed');
