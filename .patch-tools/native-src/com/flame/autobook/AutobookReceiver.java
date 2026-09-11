@@ -48,6 +48,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -128,9 +129,25 @@ public class AutobookReceiver extends BroadcastReceiver {
       return;
     }
 
+    // Guards against two runOnce() passes overlapping -- a redelivered
+    // BOOT_COMPLETED, or the alarm firing right as a previous run is still
+    // finishing up, could otherwise have two background threads read the
+    // same pending_intents, both attempt the same intent, and race on the
+    // final prefs write (last write wins). Mirrors autoBookRunning's own
+    // guard on the JS side. A BroadcastReceiver gets a fresh instance per
+    // delivery, so this has to be static, not an instance field, and an
+    // AtomicBoolean rather than a plain boolean so the check-and-set
+    // itself can't itself race.
+    if (!RUN_IN_PROGRESS.compareAndSet(false, true)) {
+      return; // already running -- the in-flight pass (or the next alarm
+               // fire once it's done) covers this
+    }
+
     PendingResult result = goAsync();
     new Thread(new RunTask(appContext, auraContext, auraToken, userId, cookie, result)).start();
   }
+
+  private static final AtomicBoolean RUN_IN_PROGRESS = new AtomicBoolean(false);
 
   private static class RunTask implements Runnable {
     private final Context appContext;
@@ -154,6 +171,8 @@ public class AutobookReceiver extends BroadcastReceiver {
         // Any unexpected failure just means this pass produced nothing --
         // the alarm chain (armed inside runOnce before any of the risky
         // work, see below) keeps going regardless.
+      } finally {
+        RUN_IN_PROGRESS.set(false);
       }
       result.finish();
     }
