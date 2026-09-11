@@ -751,7 +751,7 @@ public class AutobookReceiver extends BroadcastReceiver {
         : new Notification.Builder(context);
     builder.setContentTitle(title)
         .setContentText(body)
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setSmallIcon(android.R.drawable.ic_menu_month)
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_HIGH)
         .setStyle(new Notification.BigTextStyle().bigText(body));
@@ -785,7 +785,7 @@ public class AutobookReceiver extends BroadcastReceiver {
         : new Notification.Builder(context);
     builder.setContentTitle("Autobook paused")
         .setContentText(body)
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setSmallIcon(android.R.drawable.ic_menu_month)
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_HIGH)
         .setStyle(new Notification.BigTextStyle().bigText(body));
@@ -855,7 +855,7 @@ public class AutobookReceiver extends BroadcastReceiver {
         : new Notification.Builder(context);
     builder.setContentTitle(title)
         .setContentText(body)
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setSmallIcon(android.R.drawable.ic_menu_month)
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_DEFAULT);
     nm.notify(notifId, builder.build());
