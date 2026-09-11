@@ -29,6 +29,41 @@ export const auraState = {
 // value — never an error the user sees.
 const AUTH_KEY = 'flame-aura-auth';
 
+// Temporary: measuring whether the token actually survives a long idle gap
+// (native background autobook hinges on this — console.log doesn't reach
+// logcat on this app's WebView, per HANDOFF, so this logs into localStorage
+// instead, readable later via a Frida -n attach). Fingerprint only (last 8
+// chars), never the raw token. Drop this once the question is settled.
+const TOKEN_LOG_KEY = 'flame-token-log';
+const TOKEN_LOG_MAX = 40;
+
+function fingerprint(token) {
+  return token ? token.slice(-8) : null;
+}
+
+function logTokenEvent(event, token) {
+  try {
+    const log = JSON.parse(localStorage.getItem(TOKEN_LOG_KEY) || '[]');
+    log.push({ event, ts: Date.now(), tok: fingerprint(token) });
+    while (log.length > TOKEN_LOG_MAX) log.shift();
+    localStorage.setItem(TOKEN_LOG_KEY, JSON.stringify(log));
+  } catch (e) {}
+}
+window.__flameTokenLog = () => {
+  try { return JSON.parse(localStorage.getItem(TOKEN_LOG_KEY) || '[]'); } catch (e) { return []; }
+};
+
+// Native-autobook bridge (temporary, same lifetime as the token log above):
+// the compiled AutobookReceiver has no WebView and can't read localStorage
+// directly, so hook.src.js pulls this via evaluateJavascript and copies it
+// into native SharedPreferences on every page load. Live values only, not
+// persisted here — auraState already is the source of truth.
+window.__flameAuthSnapshot = () => ({
+  context: auraState.context,
+  token: auraState.token,
+  userId: auraState.userId,
+});
+
 function loadStoredAuth() {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
@@ -40,6 +75,7 @@ function loadStoredAuth() {
     // userId is derived from the account, not the session — safe to reuse
     // even when the token turns out to be stale.
     if (saved.userId) auraState.userId = saved.userId;
+    logTokenEvent('load', saved.token);
   } catch (e) {
     // Unreadable or from an older shape: fall back to sniffing, which is
     // exactly the behaviour before any of this existed.
@@ -54,6 +90,7 @@ function storeAuth() {
       token: auraState.token,
       userId: auraState.userId,
     }));
+    logTokenEvent('store', auraState.token);
   } catch (e) {}
 }
 
@@ -253,6 +290,7 @@ async function sendAura(classname, method, params = null, cacheable = false, nam
   // (or a manual reload) repopulates auraState, then surface the error.
   const err = new Error(`aura call failed (${classname}.${method}): ${JSON.stringify(action.error || action)}`);
   if (JSON.stringify(action).indexOf('INVALID_TOKEN') !== -1) {
+    logTokenEvent('rejected', auraState.token);
     auraState.token = null;
     // Drop the stored copy too, or every launch would start by spending a
     // request on the same dead token.
