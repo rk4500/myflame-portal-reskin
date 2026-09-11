@@ -107,6 +107,41 @@
   // value — never an error the user sees.
   const AUTH_KEY = 'flame-aura-auth';
 
+  // Temporary: measuring whether the token actually survives a long idle gap
+  // (native background autobook hinges on this — console.log doesn't reach
+  // logcat on this app's WebView, per HANDOFF, so this logs into localStorage
+  // instead, readable later via a Frida -n attach). Fingerprint only (last 8
+  // chars), never the raw token. Drop this once the question is settled.
+  const TOKEN_LOG_KEY = 'flame-token-log';
+  const TOKEN_LOG_MAX = 40;
+
+  function fingerprint(token) {
+    return token ? token.slice(-8) : null;
+  }
+
+  function logTokenEvent(event, token) {
+    try {
+      const log = JSON.parse(localStorage.getItem(TOKEN_LOG_KEY) || '[]');
+      log.push({ event, ts: Date.now(), tok: fingerprint(token) });
+      while (log.length > TOKEN_LOG_MAX) log.shift();
+      localStorage.setItem(TOKEN_LOG_KEY, JSON.stringify(log));
+    } catch (e) {}
+  }
+  window.__flameTokenLog = () => {
+    try { return JSON.parse(localStorage.getItem(TOKEN_LOG_KEY) || '[]'); } catch (e) { return []; }
+  };
+
+  // Native-autobook bridge (temporary, same lifetime as the token log above):
+  // the compiled AutobookReceiver has no WebView and can't read localStorage
+  // directly, so hook.src.js pulls this via evaluateJavascript and copies it
+  // into native SharedPreferences on every page load. Live values only, not
+  // persisted here — auraState already is the source of truth.
+  window.__flameAuthSnapshot = () => ({
+    context: auraState.context,
+    token: auraState.token,
+    userId: auraState.userId,
+  });
+
   function loadStoredAuth() {
     try {
       const raw = localStorage.getItem(AUTH_KEY);
@@ -118,6 +153,7 @@
       // userId is derived from the account, not the session — safe to reuse
       // even when the token turns out to be stale.
       if (saved.userId) auraState.userId = saved.userId;
+      logTokenEvent('load', saved.token);
     } catch (e) {
       // Unreadable or from an older shape: fall back to sniffing, which is
       // exactly the behaviour before any of this existed.
@@ -132,6 +168,7 @@
         token: auraState.token,
         userId: auraState.userId,
       }));
+      logTokenEvent('store', auraState.token);
     } catch (e) {}
   }
 
@@ -331,6 +368,7 @@
     // (or a manual reload) repopulates auraState, then surface the error.
     const err = new Error(`aura call failed (${classname}.${method}): ${JSON.stringify(action.error || action)}`);
     if (JSON.stringify(action).indexOf('INVALID_TOKEN') !== -1) {
+      logTokenEvent('rejected', auraState.token);
       auraState.token = null;
       // Drop the stored copy too, or every launch would start by spending a
       // request on the same dead token.
@@ -644,7 +682,6 @@
   const AUTOBOOK_KEY = 'flame-auto-book';
   const SLOT_MEMORY_KEY = 'flame-slot-times';
   const BOOKING_WINDOW_MS = 24 * 60 * 60 * 1000;
-  const AUTOBOOK_EARLY_MARGIN_MS = 30 * 60 * 1000;
 
   function loadJson(key, fallback) {
     try {
@@ -664,7 +701,40 @@
   }
 
   const loadIntents = () => loadJson(AUTOBOOK_KEY, []);
-  const saveIntents = (list) => saveJson(AUTOBOOK_KEY, list);
+
+  // Native-autobook bridge: AutobookReceiver has no WebView and can't read
+  // localStorage directly, so hook.src.js pulls this the same way it already
+  // pulls window.__flameAuthSnapshot (see src/aura.js) and writes it into
+  // SharedPreferences. Only 'waiting' intents matter for scheduling --
+  // done/failed ones are history the JS side already owns.
+  window.__flameIntentsSnapshot = () => loadIntents().filter((i) => i.state === 'waiting');
+
+  // Signals hook.src.js the instant intents actually change, via
+  // document.title -- WebChromeClient.onReceivedTitle is a real Android
+  // callback that fires on every title write, old enough to predate
+  // addJavascriptInterface, and needs no custom bridge object on our side.
+  // Without this, a freshly scheduled intent is invisible to native until the
+  // next full page load (onPageFinished is the only other bridge point, and
+  // scheduleIntent()/removeIntent() are plain localStorage writes, no
+  // navigation). No visible effect: nothing in this app's UI reads or shows
+  // document.title.
+  // `event` is optional and carries what actually just happened (a booking
+  // settling, a watch being cancelled) so hook.src.js can fire the real
+  // formatted notification even for a change made from inside the app, not
+  // just bridge the snapshot for native scheduling -- the two purposes ride
+  // in one signal since both need the same title-change trip either way.
+  function signalNativeIntentsChanged(event) {
+    try {
+      document.title = 'FLAME_INTENT:' + JSON.stringify({ intents: window.__flameIntentsSnapshot(), event });
+    } catch (e) {}
+  }
+
+  // Every save routes through here so the signal can't be forgotten at a call
+  // site -- one choke point instead of four places to remember to call it.
+  const saveIntents = (list, event) => {
+    saveJson(AUTOBOOK_KEY, list);
+    signalNativeIntentsChanged(event);
+  };
 
   // "7:00 AM" -> minutes since midnight. The portal's own slot strings.
   function parseClockMinutes(text) {
@@ -821,7 +891,7 @@
       createdAt: Date.now(),
     };
     list.push(intent);
-    saveIntents(list);
+    saveIntents(list, { type: 'scheduled', intent });
     return intent;
   }
 
@@ -901,12 +971,14 @@
     // Nothing armed means nothing changed: the future series that would have
     // been replaced is left alone rather than removed in favour of a series
     // that does not exist.
-    if (next) saveIntents(list);
+    if (next) saveIntents(list, { type: 'scheduled', intent: next });
     return next;
   }
 
   function removeIntent(id) {
-    saveIntents(loadIntents().filter((i) => i.id !== id));
+    const list = loadIntents();
+    const removed = list.find((i) => i.id === id);
+    saveIntents(list.filter((i) => i.id !== id), removed ? { type: 'cancelled', intent: removed } : undefined);
   }
 
   // One booking per resource class per calendar day — and "class" is the
@@ -1302,12 +1374,19 @@
     // existed are still sitting in localStorage, and a booking made earlier
     // in this same pass is not in cache.bookings's snapshot either.
     const claimed = new Set();
+    // Every intent that actually settles (done/failed) this pass, so the
+    // save at the end can tell hook.src.js what happened -- not just the
+    // current snapshot -- and it can fire the real notification even though
+    // this whole run only happens while the app is open (native stands down
+    // then, see AutobookReceiver's own foreground check).
+    const settledThisPass = [];
     try {
       for (const intent of waiting) {
         const classKey = `${resourceClassKey(intent.resourceName)}|${intent.date}`;
         if (claimed.has(classKey)) {
           intent.state = 'failed';
           intent.message = `Only one ${cleanResourceName(intent.resourceName)} booking a day — another slot was already taken for ${intent.date}.`;
+          settledThisPass.push(intent);
           changed = true;
           continue;
         }
@@ -1316,6 +1395,7 @@
         if (!start || !opensAt) {
           intent.state = 'failed';
           intent.message = 'Could not read that slot time.';
+          settledThisPass.push(intent);
           changed = true;
           continue;
         }
@@ -1325,16 +1405,15 @@
           // Settled, so the series moves on. A morning the app was never
           // opened in must not be the morning the series quietly ends.
           spawnNextOccurrence(intent, list);
+          settledThisPass.push(intent);
           changed = true;
           continue;
         }
-        // Start trying slightly before the window is calculated to open.
-        // "Less than 24h away" is our model of the rule, not something the
-        // API states; if the portal actually releases a bit earlier (a
-        // midnight drop, say, or just a clock that disagrees), being early
-        // costs two cheap calls that answer "not listed yet", while being
-        // late costs the booking.
-        if (Date.now() < opensAt.getTime() - AUTOBOOK_EARLY_MARGIN_MS) continue;
+        // No early margin: the 24h rule is confirmed, not a guess, and a
+        // network call is seconds at most -- nothing here benefits from
+        // starting 30 minutes before opensAt (matches the native port's own
+        // fix, same reasoning).
+        if (Date.now() < opensAt.getTime()) continue;
 
         try {
           if (await alreadyBookedThatDay(intent)) {
@@ -1348,6 +1427,7 @@
             // silently never ran again. One booking a day still holds — the
             // series just resumes the day after.
             spawnNextOccurrence(intent, list);
+            settledThisPass.push(intent);
             changed = true;
             continue;
           }
@@ -1387,6 +1467,14 @@
             cache.bookings = null;
             clearPersistedBookings();
             spawnNextOccurrence(intent, list);
+            settledThisPass.push(intent);
+          } else if (/within\s*1\s*day/i.test(text)) {
+            // The portal's own "too early" refusal -- confirmed live
+            // (2026-09-11): a premature attempt (from the since-removed
+            // 30-min-early bug) got back "...select a slot within 1 day."
+            // and was wrongly marked a permanent failure. Not terminal: the
+            // window genuinely hasn't opened yet, same as "Full"/"not listed".
+            intent.message = 'Not open yet — still watching.';
           } else {
             // createReservation answers refusals with state:SUCCESS and a
             // plain string, so the text is the only signal there is.
@@ -1395,6 +1483,7 @@
             // A refused day says nothing about tomorrow, so a series
             // survives a refusal.
             spawnNextOccurrence(intent, list);
+            settledThisPass.push(intent);
           }
           changed = true;
         } catch (e) {
@@ -1402,7 +1491,7 @@
           changed = true;
         }
       }
-      if (changed) saveIntents(list);
+      if (changed) saveIntents(list, settledThisPass.length ? { type: 'settled', intents: settledThisPass } : undefined);
     } finally {
       autoBookRunning = false;
     }
@@ -1420,7 +1509,7 @@
       const now = Date.now();
       const soon = waiting.some((i) => {
         const opensAt = intentOpensAt(i);
-        return opensAt && now >= opensAt.getTime() - AUTOBOOK_EARLY_MARGIN_MS;
+        return opensAt && now >= opensAt.getTime();
       });
       const interval = soon ? 15000 : 120000;
       if (now - lastAutoBookRun >= interval) runAutoBook();
@@ -2312,11 +2401,13 @@
 
     ui.root.append(nav, ui.bannerHost, ui.viewportEl);
     document.body.appendChild(ui.root);
-    // Preview/dev only: let the harness pick which tab to boot straight
-    // into, instead of racing a separate switchTab() call against this one
-    // after the fact (two switchTab calls in flight at once is exactly the
-    // out-of-order scenario the token guard exists for).
-    switchTab((window.__FLAME_RESKIN_PREVIEW__ && window.__FLAME_RESKIN_INITIAL_TAB__) || 'home');
+    // window.__flameOpenTab is real production, not preview-only: set by
+    // hook.src.js's applyOpenTabExtra() when the app was cold-launched from
+    // one of AutobookReceiver's own notifications, so tapping one lands
+    // directly on My Bookings instead of just a generic app-open. Checked
+    // first, ahead of the preview harness's own initial-tab param, so both
+    // can coexist without one silently overriding the other's intent.
+    switchTab(window.__flameOpenTab || (window.__FLAME_RESKIN_PREVIEW__ && window.__FLAME_RESKIN_INITIAL_TAB__) || 'home');
     paintAutoBookBanner();
 
     // Scheduled bookings ride on the same session the UI uses, so wait for a

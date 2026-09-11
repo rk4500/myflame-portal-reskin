@@ -23,7 +23,6 @@ import { cache, ui } from './state.js';
 const AUTOBOOK_KEY = 'flame-auto-book';
 const SLOT_MEMORY_KEY = 'flame-slot-times';
 export const BOOKING_WINDOW_MS = 24 * 60 * 60 * 1000;
-const AUTOBOOK_EARLY_MARGIN_MS = 30 * 60 * 1000;
 
 function loadJson(key, fallback) {
   try {
@@ -43,7 +42,40 @@ function saveJson(key, value) {
 }
 
 export const loadIntents = () => loadJson(AUTOBOOK_KEY, []);
-const saveIntents = (list) => saveJson(AUTOBOOK_KEY, list);
+
+// Native-autobook bridge: AutobookReceiver has no WebView and can't read
+// localStorage directly, so hook.src.js pulls this the same way it already
+// pulls window.__flameAuthSnapshot (see src/aura.js) and writes it into
+// SharedPreferences. Only 'waiting' intents matter for scheduling --
+// done/failed ones are history the JS side already owns.
+window.__flameIntentsSnapshot = () => loadIntents().filter((i) => i.state === 'waiting');
+
+// Signals hook.src.js the instant intents actually change, via
+// document.title -- WebChromeClient.onReceivedTitle is a real Android
+// callback that fires on every title write, old enough to predate
+// addJavascriptInterface, and needs no custom bridge object on our side.
+// Without this, a freshly scheduled intent is invisible to native until the
+// next full page load (onPageFinished is the only other bridge point, and
+// scheduleIntent()/removeIntent() are plain localStorage writes, no
+// navigation). No visible effect: nothing in this app's UI reads or shows
+// document.title.
+// `event` is optional and carries what actually just happened (a booking
+// settling, a watch being cancelled) so hook.src.js can fire the real
+// formatted notification even for a change made from inside the app, not
+// just bridge the snapshot for native scheduling -- the two purposes ride
+// in one signal since both need the same title-change trip either way.
+function signalNativeIntentsChanged(event) {
+  try {
+    document.title = 'FLAME_INTENT:' + JSON.stringify({ intents: window.__flameIntentsSnapshot(), event });
+  } catch (e) {}
+}
+
+// Every save routes through here so the signal can't be forgotten at a call
+// site -- one choke point instead of four places to remember to call it.
+const saveIntents = (list, event) => {
+  saveJson(AUTOBOOK_KEY, list);
+  signalNativeIntentsChanged(event);
+};
 
 // "7:00 AM" -> minutes since midnight. The portal's own slot strings.
 export function parseClockMinutes(text) {
@@ -200,7 +232,7 @@ export function scheduleIntent({ resource, facilityName, date, startTime, endTim
     createdAt: Date.now(),
   };
   list.push(intent);
-  saveIntents(list);
+  saveIntents(list, { type: 'scheduled', intent });
   return intent;
 }
 
@@ -280,12 +312,14 @@ export function startDailySeries({ resource, facilityName, date, startTime, endT
   // Nothing armed means nothing changed: the future series that would have
   // been replaced is left alone rather than removed in favour of a series
   // that does not exist.
-  if (next) saveIntents(list);
+  if (next) saveIntents(list, { type: 'scheduled', intent: next });
   return next;
 }
 
 export function removeIntent(id) {
-  saveIntents(loadIntents().filter((i) => i.id !== id));
+  const list = loadIntents();
+  const removed = list.find((i) => i.id === id);
+  saveIntents(list.filter((i) => i.id !== id), removed ? { type: 'cancelled', intent: removed } : undefined);
 }
 
 // One booking per resource class per calendar day — and "class" is the
@@ -681,12 +715,19 @@ export async function runAutoBook() {
   // existed are still sitting in localStorage, and a booking made earlier
   // in this same pass is not in cache.bookings's snapshot either.
   const claimed = new Set();
+  // Every intent that actually settles (done/failed) this pass, so the
+  // save at the end can tell hook.src.js what happened -- not just the
+  // current snapshot -- and it can fire the real notification even though
+  // this whole run only happens while the app is open (native stands down
+  // then, see AutobookReceiver's own foreground check).
+  const settledThisPass = [];
   try {
     for (const intent of waiting) {
       const classKey = `${resourceClassKey(intent.resourceName)}|${intent.date}`;
       if (claimed.has(classKey)) {
         intent.state = 'failed';
         intent.message = `Only one ${cleanResourceName(intent.resourceName)} booking a day — another slot was already taken for ${intent.date}.`;
+        settledThisPass.push(intent);
         changed = true;
         continue;
       }
@@ -695,6 +736,7 @@ export async function runAutoBook() {
       if (!start || !opensAt) {
         intent.state = 'failed';
         intent.message = 'Could not read that slot time.';
+        settledThisPass.push(intent);
         changed = true;
         continue;
       }
@@ -704,16 +746,15 @@ export async function runAutoBook() {
         // Settled, so the series moves on. A morning the app was never
         // opened in must not be the morning the series quietly ends.
         spawnNextOccurrence(intent, list);
+        settledThisPass.push(intent);
         changed = true;
         continue;
       }
-      // Start trying slightly before the window is calculated to open.
-      // "Less than 24h away" is our model of the rule, not something the
-      // API states; if the portal actually releases a bit earlier (a
-      // midnight drop, say, or just a clock that disagrees), being early
-      // costs two cheap calls that answer "not listed yet", while being
-      // late costs the booking.
-      if (Date.now() < opensAt.getTime() - AUTOBOOK_EARLY_MARGIN_MS) continue;
+      // No early margin: the 24h rule is confirmed, not a guess, and a
+      // network call is seconds at most -- nothing here benefits from
+      // starting 30 minutes before opensAt (matches the native port's own
+      // fix, same reasoning).
+      if (Date.now() < opensAt.getTime()) continue;
 
       try {
         if (await alreadyBookedThatDay(intent)) {
@@ -727,6 +768,7 @@ export async function runAutoBook() {
           // silently never ran again. One booking a day still holds — the
           // series just resumes the day after.
           spawnNextOccurrence(intent, list);
+          settledThisPass.push(intent);
           changed = true;
           continue;
         }
@@ -766,6 +808,14 @@ export async function runAutoBook() {
           cache.bookings = null;
           clearPersistedBookings();
           spawnNextOccurrence(intent, list);
+          settledThisPass.push(intent);
+        } else if (/within\s*1\s*day/i.test(text)) {
+          // The portal's own "too early" refusal -- confirmed live
+          // (2026-09-11): a premature attempt (from the since-removed
+          // 30-min-early bug) got back "...select a slot within 1 day."
+          // and was wrongly marked a permanent failure. Not terminal: the
+          // window genuinely hasn't opened yet, same as "Full"/"not listed".
+          intent.message = 'Not open yet — still watching.';
         } else {
           // createReservation answers refusals with state:SUCCESS and a
           // plain string, so the text is the only signal there is.
@@ -774,6 +824,7 @@ export async function runAutoBook() {
           // A refused day says nothing about tomorrow, so a series
           // survives a refusal.
           spawnNextOccurrence(intent, list);
+          settledThisPass.push(intent);
         }
         changed = true;
       } catch (e) {
@@ -781,7 +832,7 @@ export async function runAutoBook() {
         changed = true;
       }
     }
-    if (changed) saveIntents(list);
+    if (changed) saveIntents(list, settledThisPass.length ? { type: 'settled', intents: settledThisPass } : undefined);
   } finally {
     autoBookRunning = false;
   }
@@ -799,7 +850,7 @@ export function startAutoBookLoop() {
     const now = Date.now();
     const soon = waiting.some((i) => {
       const opensAt = intentOpensAt(i);
-      return opensAt && now >= opensAt.getTime() - AUTOBOOK_EARLY_MARGIN_MS;
+      return opensAt && now >= opensAt.getTime();
     });
     const interval = soon ? 15000 : 120000;
     if (now - lastAutoBookRun >= interval) runAutoBook();

@@ -14,6 +14,8 @@
 !.patch-tools/gadget-config.json
 !.patch-tools/probe.js
 !.patch-tools/fast-rebuild.sh
+!.patch-tools/native-test-build.sh
+!.patch-tools/native-src/
 # hook.js and hook.compiled.js are deliberately NOT tracked: 90% of hook.js
 # is a pasted copy of portal-reskin.user.js, so every userscript edit would
 # show up a second time as a near-identical diff in the same commit.
