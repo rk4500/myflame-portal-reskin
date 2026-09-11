@@ -14,7 +14,7 @@ This file is organised by subject, not by date — dates are kept on individual 
 - **Slow, deliberate swipes are still unreliable, genuinely unresolved** — see "Swipe: slow drags" in Shell. Fast flicks and nav taps are unaffected; `settings.motion` off (via the new long-press → Settings menu) reverts tab switching to no sliding at all if the swipe UX isn't wanted regardless.
 - `src/settings.js` is new: a small persisted-settings stub, one flag (`motion`) so far, reachable from mobile's Home long-press → Settings.
 - `.patch-tools/fast-rebuild.sh` is new (see "Source layout and build" / the patch-tools section) — cuts a script-only patch iteration from ~48s to ~7s by reusing a persistent decompiled+injected directory instead of re-running apktool's decompile step every time. Only valid until `flame-merged.apk` itself changes.
-- Branches kept on purpose, not to be deleted without asking: `rail` (rejected design, below), `build-split`, `skeleton-loaders`, `gyan-updates`.
+- `build-split`, `skeleton-loaders`, and `gyan-updates` are already merged into `master` (ancestors of it, confirmed via `git merge-base --is-ancestor`) — this line used to list them as separately-unmerged and kept on purpose, which stopped being true a while ago and nobody caught it. Only `rail` (a rejected design, below) is genuinely unmerged, kept around for record-keeping, not deleted without asking.
 
 ## Working rules
 
