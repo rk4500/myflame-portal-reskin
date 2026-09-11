@@ -89,6 +89,16 @@ public class AutobookReceiver extends BroadcastReceiver {
 
   @Override
   public void onReceive(Context context, Intent intent) {
+    if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+      // setExactAndAllowWhileIdle doesn't survive a reboot -- this is the
+      // only thing that re-arms it afterward. pending_intents itself
+      // survives fine (real SharedPreferences, not tied to the alarm), so
+      // this is pure reuse: scheduleNextWake() already no-ops correctly if
+      // token_dead is set or nothing's waiting, same as any other call.
+      scheduleNextWake(context.getApplicationContext());
+      return;
+    }
+
     ensureChannel(context);
     Context appContext = context.getApplicationContext();
     SharedPreferences prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
