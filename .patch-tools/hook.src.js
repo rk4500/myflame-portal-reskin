@@ -521,6 +521,33 @@ try {
     }
   }
 
+  // AutobookReceiver's notifications carry a flame_open_tab extra on their
+  // launch Intent (buildOpenTabIntent()) so tapping one lands on My
+  // Bookings specifically, not just a generic app-open. Same
+  // before-SCRIPT synchronous-snippet pattern as reconcileNativeIntents,
+  // for the same reason -- main.js's boot() needs this in place before it
+  // reads it, not racing an async round-trip against it. Only reliable on
+  // a genuine cold start: getIntent() reading the *launch* extra is what's
+  // targeted here, and whether a still-alive task's Activity re-delivers
+  // it via onNewIntent()/setIntent() on a tap while already open is
+  // unconfirmed -- the realistic case (a background-alarm notification)
+  // only ever fires while the app isn't already open anyway.
+  function applyOpenTabExtra(view) {
+    try {
+      var activity = resolveActivity(view);
+      if (!activity) return;
+      var tab = activity.getIntent().getStringExtra('flame_open_tab');
+      if (!tab) return;
+      view.evaluateJavascript(
+        '(function(){try{window.__flameOpenTab=' + JSON.stringify(tab) + ';}catch(e){}})();',
+        null
+      );
+      log(TAG + ' open-tab extra applied: ' + tab);
+    } catch (e) {
+      log(TAG + ' applyOpenTabExtra error: ' + e);
+    }
+  }
+
   // A fresh intent from scheduleIntent()/removeIntent() is a plain
   // localStorage write -- no navigation, so it never reaches
   // scheduleTokenLogDump's one-shot per-page-load bridge on its own. Left
@@ -694,6 +721,7 @@ try {
               // settled while the app was closed is already in localStorage
               // by the time main.js's boot() paints the autobook banner.
               reconcileNativeIntents(view);
+              applyOpenTabExtra(view);
               log(TAG + ' injecting reskin into ' + url);
               view.evaluateJavascript(SCRIPT, null);
               revealWhenReskinPaints(view);

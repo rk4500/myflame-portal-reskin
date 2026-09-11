@@ -2401,11 +2401,13 @@
 
     ui.root.append(nav, ui.bannerHost, ui.viewportEl);
     document.body.appendChild(ui.root);
-    // Preview/dev only: let the harness pick which tab to boot straight
-    // into, instead of racing a separate switchTab() call against this one
-    // after the fact (two switchTab calls in flight at once is exactly the
-    // out-of-order scenario the token guard exists for).
-    switchTab((window.__FLAME_RESKIN_PREVIEW__ && window.__FLAME_RESKIN_INITIAL_TAB__) || 'home');
+    // window.__flameOpenTab is real production, not preview-only: set by
+    // hook.src.js's applyOpenTabExtra() when the app was cold-launched from
+    // one of AutobookReceiver's own notifications, so tapping one lands
+    // directly on My Bookings instead of just a generic app-open. Checked
+    // first, ahead of the preview harness's own initial-tab param, so both
+    // can coexist without one silently overriding the other's intent.
+    switchTab(window.__flameOpenTab || (window.__FLAME_RESKIN_PREVIEW__ && window.__FLAME_RESKIN_INITIAL_TAB__) || 'home');
     paintAutoBookBanner();
 
     // Scheduled bookings ride on the same session the UI uses, so wait for a

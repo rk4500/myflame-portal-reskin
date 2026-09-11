@@ -794,11 +794,6 @@ public class AutobookReceiver extends BroadcastReceiver {
       body = sb.toString().trim();
     }
 
-    Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-    PendingIntent contentIntent = launch != null
-        ? PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
-        : null;
-
     NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
     Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         ? new Notification.Builder(context, CHANNEL_ID)
@@ -809,8 +804,27 @@ public class AutobookReceiver extends BroadcastReceiver {
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_HIGH)
         .setStyle(new Notification.BigTextStyle().bigText(body));
+    PendingIntent contentIntent = buildOpenTabIntent(context, "bookings");
     if (contentIntent != null) builder.setContentIntent(contentIntent);
     nm.notify(NOTIF_ID, builder.build());
+  }
+
+  // Every notification here is about a booking/watch, so every one taps
+  // through to My Bookings specifically, not just a generic app-open --
+  // the extra rides on the launch Intent (flame_open_tab), read back by
+  // hook.src.js's onPageFinished handler and handed to shell.js's boot
+  // call the same way ?tab= already steers the local preview harness.
+  // Only reliably reaches shell.js on a genuine cold start (the launch
+  // Intent's extra) -- tapping while the app's task is already alive
+  // depends on whether RN's own Activity base class re-delivers it via
+  // onNewIntent()/setIntent(), unconfirmed either way; the realistic case
+  // this matters for is the background-alarm notification, which by
+  // definition only ever fires while the app isn't already open.
+  private static PendingIntent buildOpenTabIntent(Context context, String tab) {
+    Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+    if (launch == null) return null;
+    launch.putExtra("flame_open_tab", tab);
+    return PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
   }
 
   // Covers two triggers now, both treated identically: a dead Aura token
@@ -833,11 +847,6 @@ public class AutobookReceiver extends BroadcastReceiver {
         ? "Couldn't reach the portal — 1 watch is paused. Open the app to resume it."
         : "Couldn't reach the portal — " + stillWaiting + " watches are paused. Open the app to resume them.";
 
-    Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-    PendingIntent contentIntent = launch != null
-        ? PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
-        : null;
-
     NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
     Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         ? new Notification.Builder(context, CHANNEL_ID)
@@ -848,6 +857,7 @@ public class AutobookReceiver extends BroadcastReceiver {
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_HIGH)
         .setStyle(new Notification.BigTextStyle().bigText(body));
+    PendingIntent contentIntent = buildOpenTabIntent(context, "bookings");
     if (contentIntent != null) builder.setContentIntent(contentIntent);
     nm.notify(TOKEN_DEAD_NOTIF_ID, builder.build());
   }
@@ -917,6 +927,8 @@ public class AutobookReceiver extends BroadcastReceiver {
         .setSmallIcon(android.R.drawable.ic_menu_month)
         .setAutoCancel(true)
         .setPriority(Notification.PRIORITY_DEFAULT);
+    PendingIntent contentIntent = buildOpenTabIntent(context, "bookings");
+    if (contentIntent != null) builder.setContentIntent(contentIntent);
     nm.notify(notifId, builder.build());
   }
 
